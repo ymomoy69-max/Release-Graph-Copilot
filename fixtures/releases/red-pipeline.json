@@ -1,13 +1,13 @@
 {
   "id": "red-pipeline",
   "question": "Is this deploy safe?",
-  "repos": ["meridian-gateway"],
+  "repos": ["gateway"],
   "graph": "fixtures/graph/deploy-graph.yaml",
   "ci_dir": "fixtures/ci-status/red-pipeline",
   "changed_paths": [
-    "meridian-gateway/src/routes.py",
-    "prompt-backend/src/api.py",
-    "nc-enterprise-ai-platform-etl-jobs/jobs/consume.yaml"
+    "gateway/src/routes.py",
+    "app-backend/src/api.py",
+    "data-pipeline/jobs/consume.yaml"
   ],
   "overlays": []
 }

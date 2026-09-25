@@ -211,3 +211,95 @@ def test_script_contains_required_strings(server):
     assert "E2E trigger written." in body
     assert "Nothing was triggered." in body
     assert "e2e-folders" in body
+
+# ---------------------------------------------------------------------------
+# Check cards
+# ---------------------------------------------------------------------------
+
+def test_get_safe_has_check_cards(server):
+    """GET /?scenario=safe must have check cards with id=check-cards."""
+    _, body, _ = get(server, "/?scenario=safe")
+    assert 'id="check-cards"' in body
+    assert 'class="check-card' in body
+    # All five check cards are present
+    assert "Pipeline Status" in body
+    assert "Workflow-Config Diff" in body
+    assert "FC/ETL Path" in body
+    assert "Flyway Scan" in body
+    assert "Playwright Map" in body
+
+
+def test_get_safe_pass_cards_green_border(server):
+    """Pass cards have card-pass CSS class."""
+    _, body, _ = get(server, "/?scenario=safe")
+    assert "card-pass" in body
+
+
+def test_get_unsafe_flag_flip_blocked_card_red_border(server):
+    """Blocked cards have card-blocked CSS class."""
+    _, body, _ = get(server, "/?scenario=unsafe-flag-flip")
+    assert "card-blocked" in body
+
+
+def test_get_unsafe_flag_flip_shows_feature_flags_location(server):
+    """The unsafe flag-flip page must show feature-flags.yaml in a location element."""
+    _, body, _ = get(server, "/?scenario=unsafe-flag-flip")
+    assert "feature-flags.yaml" in body
+
+
+def test_get_unsafe_flag_flip_shows_rehydrate_snippet(server):
+    """The unsafe flag-flip page must show the runbook quote inside a pre.snippet."""
+    _, body, _ = get(server, "/?scenario=unsafe-flag-flip")
+    assert 'class="snippet"' in body
+    assert "rehydrate must run before flag flip to GIT" in body
+
+
+def test_get_scan_form_present(server):
+    """The page must contain form#scan with all required inputs."""
+    _, body, _ = get(server, "/")
+    assert 'id="scan"' in body
+    assert 'id="workspace"' in body
+    assert 'id="config"' in body
+    assert 'id="repos"' in body
+    assert 'id="ci-dir"' in body
+    assert 'id="scan-run"' in body
+
+
+# ---------------------------------------------------------------------------
+# POST /api/scan
+# ---------------------------------------------------------------------------
+
+def test_post_scan_other_org_clean_returns_show_approve(server):
+    """POST /api/scan on other-org clean workspace returns show_approve true."""
+    status, data = post(server, "/api/scan", {
+        "workspace": "fixtures/other-org/workspace",
+        "config": "fixtures/other-org/org.yaml",
+        "repos": "api",
+        "ci_dir": "fixtures/other-org/ci",
+    })
+    assert status == 200
+    assert data["show_approve"] is True
+    assert data["checklist"]["release_id"] == "other-org+api"
+    assert "run_id" in data
+
+
+def test_post_scan_invalid_args_returns_400(server):
+    """POST /api/scan with missing workspace returns 400."""
+    status, data = post(server, "/api/scan", {
+        "config": "fixtures/other-org/org.yaml",
+        "repos": "api",
+    })
+    assert status == 400
+    assert data["message"] == "invalid scan arguments"
+
+
+def test_post_scan_missing_workspace_dir_returns_400(server):
+    """POST /api/scan with nonexistent workspace returns 400."""
+    status, data = post(server, "/api/scan", {
+        "workspace": "/does/not/exist",
+        "config": "fixtures/other-org/org.yaml",
+        "repos": "api",
+    })
+    assert status == 400
+    assert data["message"] == "invalid scan arguments"
+

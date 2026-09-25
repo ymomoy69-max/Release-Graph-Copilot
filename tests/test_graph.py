@@ -10,12 +10,12 @@ CYCLIC_PATH = "fixtures/graph/cyclic-graph.yaml"
 CATALOG_PATH = "fixtures/catalog/repos.json"
 
 SIX_NODES = [
-    "meridian-gateway",
-    "prompt-backend",
-    "user-stack-ansible",
-    "meridian-ui",
-    "workflow-service",
-    "nc-enterprise-ai-platform-etl-jobs",
+    "gateway",
+    "app-backend",
+    "infra",
+    "frontend",
+    "rules-engine",
+    "data-pipeline",
 ]
 
 
@@ -65,25 +65,25 @@ def test_self_edge_is_cycle():
 # Closure
 # ---------------------------------------------------------------------------
 
-def test_closure_meridian_gateway():
-    """Naming only meridian-gateway closes over all six nodes."""
+def test_closure_gateway():
+    """Naming only gateway closes over all six nodes."""
     g = load_graph(GRAPH_PATH)
-    closure = compute_closure(g, ["meridian-gateway"])
+    closure = compute_closure(g, ["gateway"])
     assert closure == frozenset(SIX_NODES)
 
 
-def test_closure_prompt_backend():
-    """Closure of prompt-backend is all six graph nodes."""
+def test_closure_app_backend():
+    """Closure of app-backend includes all downstream nodes."""
     g = load_graph(GRAPH_PATH)
-    closure = compute_closure(g, ["prompt-backend"])
+    closure = compute_closure(g, ["app-backend"])
     assert closure == frozenset(SIX_NODES)
 
 
 def test_closure_excludes_non_graph_repos():
-    """bitbucket-db-migration is not in the graph."""
+    """ops-runbooks is not in the graph."""
     g = load_graph(GRAPH_PATH)
-    closure = compute_closure(g, ["prompt-backend"])
-    assert "bitbucket-db-migration" not in closure
+    closure = compute_closure(g, ["app-backend"])
+    assert "ops-runbooks" not in closure
     assert "repo-0008" not in closure
 
 
@@ -93,24 +93,23 @@ def test_closure_excludes_non_graph_repos():
 
 def test_topological_sort_full_graph():
     g = load_graph(GRAPH_PATH)
-    closure = compute_closure(g, ["meridian-gateway"])
+    closure = compute_closure(g, ["gateway"])
     order = topological_sort(g, closure)
     assert order == [
-        "meridian-gateway",
-        "prompt-backend",
-        "user-stack-ansible",
-        "meridian-ui",
-        "workflow-service",
-        "nc-enterprise-ai-platform-etl-jobs",
+        "gateway",
+        "app-backend",
+        "infra",
+        "frontend",
+        "rules-engine",
+        "data-pipeline",
     ]
 
 
 def test_topological_sort_subset():
     g = load_graph(GRAPH_PATH)
-    # Only meridian-gateway and prompt-backend (direct edge)
-    closure = frozenset(["meridian-gateway", "prompt-backend"])
+    closure = frozenset(["gateway", "app-backend"])
     order = topological_sort(g, closure)
-    assert order == ["meridian-gateway", "prompt-backend"]
+    assert order == ["gateway", "app-backend"]
 
 
 # ---------------------------------------------------------------------------
@@ -134,13 +133,13 @@ def test_catalog_first_seven():
     with open(CATALOG_PATH) as f:
         lst = json.load(f)
     expected = [
-        "meridian-gateway",
-        "prompt-backend",
-        "user-stack-ansible",
-        "meridian-ui",
-        "workflow-service",
-        "nc-enterprise-ai-platform-etl-jobs",
-        "bitbucket-db-migration",
+        "gateway",
+        "app-backend",
+        "infra",
+        "frontend",
+        "rules-engine",
+        "data-pipeline",
+        "ops-runbooks",
     ]
     assert lst[:7] == expected
 
@@ -156,6 +155,6 @@ def test_catalog_and_closure_under_one_second():
     start = time.monotonic()
     cat = load_catalog(CATALOG_PATH)
     g = load_graph(GRAPH_PATH)
-    closure = compute_closure(g, ["prompt-backend"])
+    closure = compute_closure(g, ["app-backend"])
     elapsed = time.monotonic() - start
     assert elapsed < 1.0

@@ -7,8 +7,8 @@ from rgc.workspace import WorkspaceView
 
 
 FULL_CLOSURE = frozenset([
-    "meridian-gateway", "prompt-backend", "user-stack-ansible",
-    "meridian-ui", "workflow-service", "nc-enterprise-ai-platform-etl-jobs",
+    "gateway", "app-backend", "infra",
+    "frontend", "rules-engine", "data-pipeline",
 ])
 
 
@@ -16,7 +16,7 @@ def make_release(changed_paths=(), overlays=()):
     return Release(
         id="test",
         question="q",
-        repos=("meridian-gateway",),
+        repos=("gateway",),
         graph_path="fixtures/graph/deploy-graph.yaml",
         ci_dir="fixtures/ci-status/green",
         changed_paths=tuple(changed_paths),
@@ -62,9 +62,9 @@ def test_empty_changed_paths():
 
 def test_safe_scenario_three_folders():
     changed = [
-        "meridian-gateway/src/routes.py",
-        "prompt-backend/src/api.py",
-        "nc-enterprise-ai-platform-etl-jobs/jobs/consume.yaml",
+        "gateway/src/routes.py",
+        "app-backend/src/api.py",
+        "data-pipeline/jobs/consume.yaml",
     ]
     release = make_release(changed_paths=changed)
     cr, e2e = run_and_unpack(release)
@@ -81,8 +81,8 @@ def test_safe_scenario_three_folders():
 
 def test_two_paths_same_folder_counted_once():
     changed = [
-        "meridian-gateway/src/routes.py",
-        "meridian-gateway/src/models.py",
+        "gateway/src/routes.py",
+        "gateway/src/models.py",
     ]
     release = make_release(changed_paths=changed)
     cr, e2e = run_and_unpack(release)
@@ -98,8 +98,8 @@ def test_two_paths_same_folder_counted_once():
 def test_unmapped_path_adds_smoke_and_warning():
     """One unmapped path plus one mapped path yields smoke + warning, risk MEDIUM."""
     changed = [
-        "meridian-gateway/src/routes.py",  # maps to gateway
-        "unknown-service/src/api.py",       # unmapped
+        "gateway/src/routes.py",        # maps to gateway
+        "unknown-service/src/api.py",   # unmapped
     ]
     release = make_release(changed_paths=changed)
     cr, e2e = run_and_unpack(release)
@@ -116,11 +116,9 @@ def test_unmapped_path_adds_smoke_and_warning():
 # ---------------------------------------------------------------------------
 
 def test_missing_timings_gives_warning_not_exception():
-    overlay = Overlay("meridian-ui/tests/timings.json", None)  # remove by overlay not applicable
-    # Use an overlay to remove the timings file
-    changed = ["meridian-gateway/src/routes.py"]
-    # Override timings.json with invalid content to trigger missing
-    overlays = [Overlay("meridian-ui/tests/timings.json", "{}")]  # missing key
+    # Use an overlay to replace timings.json with missing key
+    changed = ["gateway/src/routes.py"]
+    overlays = [Overlay("frontend/tests/timings.json", "{}")]  # missing key
     release = make_release(changed_paths=changed, overlays=overlays)
     cr, e2e = run_and_unpack(release)
     assert e2e is not None
@@ -134,8 +132,8 @@ def test_missing_timings_gives_warning_not_exception():
 
 def test_malformed_timings_json():
     """Timings JSON { → malformed_timings, display unknown, no exception."""
-    changed = ["meridian-gateway/src/routes.py"]
-    overlays = [Overlay("meridian-ui/tests/timings.json", "{")]
+    changed = ["gateway/src/routes.py"]
+    overlays = [Overlay("frontend/tests/timings.json", "{")]
     release = make_release(changed_paths=changed, overlays=overlays)
     cr, e2e = run_and_unpack(release)
     assert e2e is not None
@@ -149,12 +147,10 @@ def test_malformed_timings_json():
 # ---------------------------------------------------------------------------
 
 def test_longest_prefix_wins():
-    """prompt- and prompt-backend/ against prompt-backend/src/api.py → backend."""
-    changed = ["prompt-backend/src/api.py"]
+    """app-backend/ in README maps to backend folder."""
+    changed = ["app-backend/src/api.py"]
     release = make_release(changed_paths=changed)
     cr, e2e = run_and_unpack(release)
     assert e2e is not None
     assert "backend" in e2e.folders
-    # Should NOT match a shorter prefix that doesn't exist in the README
-    # The README has: prefix: prompt-backend/ -> folder: backend
     assert e2e.folders == ("backend",)

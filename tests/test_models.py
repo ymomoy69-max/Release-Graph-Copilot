@@ -95,7 +95,7 @@ def test_no_go_high_risk():
 def test_go_checklist_round_trip():
     checks = all_pass_checks()
     e2e = E2EScope(folders=("backend", "etl", "gateway"), estimate_seconds=260, estimate_display="4m 20s")
-    cl = Checklist.build("safe", "Is this deploy safe?", checks, ("meridian-gateway",), e2e)
+    cl = Checklist.build("safe", "Is this deploy safe?", checks, ("gateway",), e2e)
     d = cl.to_dict()
 
     # No timestamp key

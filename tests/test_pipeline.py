@@ -26,13 +26,13 @@ def make_catalog():
 
 
 CLOSURE_GATEWAY = frozenset([
-    "meridian-gateway", "prompt-backend", "user-stack-ansible",
-    "meridian-ui", "workflow-service", "nc-enterprise-ai-platform-etl-jobs",
+    "gateway", "app-backend", "infra",
+    "frontend", "rules-engine", "data-pipeline",
 ])
 
 
 def test_all_green():
-    release = make_release(["meridian-gateway"])
+    release = make_release(["gateway"])
     ws = WorkspaceView(release)
     catalog = make_catalog()
     result = pipeline.run(release, CLOSURE_GATEWAY, ws, catalog)
@@ -41,16 +41,16 @@ def test_all_green():
 
 
 def test_pipeline_not_success_failed():
-    release = make_release(["meridian-gateway"], ci_dir="fixtures/ci-status/red-pipeline")
+    release = make_release(["gateway"], ci_dir="fixtures/ci-status/red-pipeline")
     ws = WorkspaceView(release)
     catalog = make_catalog()
     result = pipeline.run(release, CLOSURE_GATEWAY, ws, catalog)
     assert result.status == "blocked"
     codes = [f.code for f in result.findings]
     assert "pipeline_not_success" in codes
-    # Only prompt-backend is failed
+    # Only app-backend is failed
     bad = [f for f in result.findings if f.code == "pipeline_not_success"]
-    assert any("prompt-backend" in f.repos for f in bad)
+    assert any("app-backend" in f.repos for f in bad)
 
 
 def test_running_and_canceled_are_pipeline_not_success(tmp_path):
@@ -58,12 +58,12 @@ def test_running_and_canceled_are_pipeline_not_success(tmp_path):
     ci_dir = tmp_path / "ci"
     ci_dir.mkdir()
     # Write a single repo with running status
-    (ci_dir / "meridian-gateway.json").write_text('{"status": "running"}')
+    (ci_dir / "gateway.json").write_text('{"status": "running"}')
 
     release = Release(
         id="t",
         question="q",
-        repos=("meridian-gateway",),
+        repos=("gateway",),
         graph_path="fixtures/graph/deploy-graph.yaml",
         ci_dir=str(ci_dir),
         changed_paths=(),
@@ -72,28 +72,28 @@ def test_running_and_canceled_are_pipeline_not_success(tmp_path):
     )
     ws = WorkspaceView(release)
     cat = make_catalog()
-    result = pipeline.run(release, frozenset(["meridian-gateway"]), ws, cat)
+    result = pipeline.run(release, frozenset(["gateway"]), ws, cat)
     assert any(f.code == "pipeline_not_success" and "running" in f.message for f in result.findings)
 
-    (ci_dir / "meridian-gateway.json").write_text('{"status": "canceled"}')
-    result2 = pipeline.run(release, frozenset(["meridian-gateway"]), ws, cat)
+    (ci_dir / "gateway.json").write_text('{"status": "canceled"}')
+    result2 = pipeline.run(release, frozenset(["gateway"]), ws, cat)
     assert any(f.code == "pipeline_not_success" and "canceled" in f.message for f in result2.findings)
 
 
 def test_missing_pipeline_and_missing_status_are_separate_findings(tmp_path):
     ci_dir = tmp_path / "ci"
     ci_dir.mkdir()
-    # No CI file for meridian-gateway either
+    # No CI file for gateway either
 
     ws_root = tmp_path / "ws"
     ws_root.mkdir()
     # Create the repo folder but no pipeline.yaml inside it
-    (ws_root / "meridian-gateway").mkdir()
+    (ws_root / "gateway").mkdir()
 
     release = Release(
         id="t",
         question="q",
-        repos=("meridian-gateway",),
+        repos=("gateway",),
         graph_path="fixtures/graph/deploy-graph.yaml",
         ci_dir=str(ci_dir),
         changed_paths=(),
@@ -102,7 +102,7 @@ def test_missing_pipeline_and_missing_status_are_separate_findings(tmp_path):
     )
     ws = WorkspaceView(release)
     cat = make_catalog()
-    result = pipeline.run(release, frozenset(["meridian-gateway"]), ws, cat)
+    result = pipeline.run(release, frozenset(["gateway"]), ws, cat)
     codes = [f.code for f in result.findings]
     assert "missing_pipeline" in codes
     assert "missing_status" in codes
@@ -111,12 +111,12 @@ def test_missing_pipeline_and_missing_status_are_separate_findings(tmp_path):
 def test_malformed_status_json(tmp_path):
     ci_dir = tmp_path / "ci"
     ci_dir.mkdir()
-    (ci_dir / "meridian-gateway.json").write_text("not valid json {{{")
+    (ci_dir / "gateway.json").write_text("not valid json {{{")
 
     release = Release(
         id="t",
         question="q",
-        repos=("meridian-gateway",),
+        repos=("gateway",),
         graph_path="fixtures/graph/deploy-graph.yaml",
         ci_dir=str(ci_dir),
         changed_paths=(),
@@ -125,14 +125,14 @@ def test_malformed_status_json(tmp_path):
     )
     ws = WorkspaceView(release)
     cat = make_catalog()
-    result = pipeline.run(release, frozenset(["meridian-gateway"]), ws, cat)
+    result = pipeline.run(release, frozenset(["gateway"]), ws, cat)
     codes = [f.code for f in result.findings]
     assert "malformed_status" in codes
 
 
 def test_repo_0008_excluded_from_green_closure():
     """repo-0008 failed status in the green directory does not affect a release whose closure excludes it."""
-    release = make_release(["meridian-gateway"])
+    release = make_release(["gateway"])
     ws = WorkspaceView(release)
     catalog = make_catalog()
     # Closure does NOT include repo-0008

@@ -10,13 +10,13 @@ def make_release(overlays=()):
     return Release(
         id="safe",
         question="Is this deploy safe?",
-        repos=("meridian-gateway",),
+        repos=("gateway",),
         graph_path="fixtures/graph/deploy-graph.yaml",
         ci_dir="fixtures/ci-status/green",
         changed_paths=(
-            "meridian-gateway/src/routes.py",
-            "prompt-backend/src/api.py",
-            "nc-enterprise-ai-platform-etl-jobs/jobs/consume.yaml",
+            "gateway/src/routes.py",
+            "app-backend/src/api.py",
+            "data-pipeline/jobs/consume.yaml",
         ),
         overlays=tuple(overlays),
         workspace_root="fixtures/workspace",

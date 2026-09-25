@@ -11,8 +11,8 @@ def test_catalog_is_frozenset():
 
 def test_catalog_known_repos():
     cat = load_catalog(CATALOG_PATH)
-    assert "meridian-gateway" in cat
-    assert "bitbucket-db-migration" in cat
+    assert "gateway" in cat
+    assert "ops-runbooks" in cat
     assert "repo-0008" in cat
     assert "repo-1130" in cat
 

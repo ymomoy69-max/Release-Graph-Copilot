@@ -94,7 +94,8 @@ def cmd_check(args) -> int:
     has_release = bool(getattr(args, "release", None))
     has_workspace = bool(getattr(args, "workspace", None))
     has_config = bool(getattr(args, "config", None))
-    has_repos = bool(getattr(args, "repos", None))
+    # --repos is considered "provided" if the attribute is not None (even if empty string)
+    has_repos = getattr(args, "repos", None) is not None
 
     if has_release and (has_workspace or has_config or has_repos):
         print("invalid scan arguments", file=sys.stderr)

@@ -1,0 +1,11 @@
+{
+  "id": "other-org-clean",
+  "question": "Is this deploy safe?",
+  "repos": ["api"],
+  "graph": "fixtures/other-org/graph.yaml",
+  "ci_dir": "fixtures/other-org/ci",
+  "workspace_root": "fixtures/other-org/workspace",
+  "config": "fixtures/other-org/org.yaml",
+  "changed_paths": [],
+  "overlays": []
+}

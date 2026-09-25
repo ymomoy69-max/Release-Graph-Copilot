@@ -1,6 +1,6 @@
 rules:
   - code: flag_flip_without_rehydrate
-    file: fixtures/workspace/bitbucket-db-migration/README.md
+    file: fixtures/workspace/ops-runbooks/README.md
     section: "3.2"
     quote: rehydrate must run before flag flip to GIT
     suggested_fix: Add rehydrate step before flag flip.

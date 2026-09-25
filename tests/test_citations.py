@@ -20,7 +20,7 @@ def make_release_with_overlays(overlays=()):
     return Release(
         id="test",
         question="q",
-        repos=("prompt-backend",),
+        repos=("app-backend",),
         graph_path="fixtures/graph/deploy-graph.yaml",
         ci_dir="fixtures/ci-status/green",
         changed_paths=(),
@@ -34,7 +34,7 @@ def make_flip_finding():
         severity="block",
         code="flag_flip_without_rehydrate",
         message="GIT flag set, no rehydrate step found.",
-        repos=("nc-enterprise-ai-platform-etl-jobs", "prompt-backend"),
+        repos=("app-backend", "data-pipeline"),
         suggested_fix="Add rehydrate step before flag flip.",
         citation=None,
     )
@@ -45,7 +45,7 @@ def make_flip_finding():
 # ---------------------------------------------------------------------------
 
 def test_citation_found_line_number():
-    """The safe runbook line number equals what a search finds."""
+    """The runbook line number equals what a search finds."""
     rules = _load_rules()
     rule = next(r for r in rules if r["code"] == "flag_flip_without_rehydrate")
     release = make_release_with_overlays()
@@ -72,7 +72,7 @@ def test_citation_not_found_if_quote_above_heading():
         "Some other text.\n"
     )
     release = make_release_with_overlays([
-        Overlay("bitbucket-db-migration/README.md", content)
+        Overlay("ops-runbooks/README.md", content)
     ])
     ws = WorkspaceView(release)
     rules = _load_rules()
@@ -116,9 +116,9 @@ def test_citation_attached_to_finding():
 
 def test_citation_not_found_adds_extra_finding():
     """Missing runbook → citation_not_found finding, no quote in output."""
-    content = "# Database migration\n\n## 1. Overview\n\nThis runbook has no flag-flip rule.\n"
+    content = "# Ops runbook\n\n## 1. Overview\n\nThis runbook has no flag-flip rule.\n"
     release = make_release_with_overlays([
-        Overlay("bitbucket-db-migration/README.md", content)
+        Overlay("ops-runbooks/README.md", content)
     ])
     ws = WorkspaceView(release)
 

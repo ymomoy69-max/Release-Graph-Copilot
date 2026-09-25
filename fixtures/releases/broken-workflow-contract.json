@@ -1,7 +1,7 @@
 {
   "id": "broken-workflow-contract",
   "question": "Is this deploy safe?",
-  "repos": ["meridian-gateway"],
+  "repos": ["gateway"],
   "graph": "fixtures/graph/deploy-graph.yaml",
   "ci_dir": "fixtures/ci-status/green",
   "changed_paths": [],

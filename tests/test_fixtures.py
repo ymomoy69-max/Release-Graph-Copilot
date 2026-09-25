@@ -8,12 +8,12 @@ from rgc.manifest import load_release, Release
 
 WORKSPACE = "fixtures/workspace"
 GRAPH_REPOS = [
-    "meridian-gateway",
-    "prompt-backend",
-    "user-stack-ansible",
-    "meridian-ui",
-    "workflow-service",
-    "nc-enterprise-ai-platform-etl-jobs",
+    "gateway",
+    "app-backend",
+    "infra",
+    "frontend",
+    "rules-engine",
+    "data-pipeline",
 ]
 RELEASE_SCENARIO_IDS = [
     "safe",
@@ -35,7 +35,7 @@ RELEASE_SCENARIO_IDS = [
 # ---------------------------------------------------------------------------
 
 def _read_runbook() -> list[str]:
-    path = os.path.join(WORKSPACE, "bitbucket-db-migration", "README.md")
+    path = os.path.join(WORKSPACE, "ops-runbooks", "README.md")
     with open(path) as f:
         return f.readlines()
 
@@ -86,7 +86,7 @@ def test_no_rehydrate_step_in_baseline():
 # ---------------------------------------------------------------------------
 
 def _load_contract():
-    path = os.path.join(WORKSPACE, "workflow-service", "contract", "workflow-contract.yaml")
+    path = os.path.join(WORKSPACE, "rules-engine", "contract", "workflow-contract.yaml")
     with open(path) as f:
         return yaml.safe_load(f)
 
@@ -118,8 +118,8 @@ def test_catalog_entries():
     with open("fixtures/catalog/repos.json") as f:
         repos = json.load(f)
     assert len(repos) == 1130
-    assert repos[0] == "meridian-gateway"
-    assert repos[6] == "bitbucket-db-migration"
+    assert repos[0] == "gateway"
+    assert repos[6] == "ops-runbooks"
     assert repos[-1] == "repo-1130"
 
 
@@ -142,12 +142,12 @@ def test_red_ci_directory():
     for repo in GRAPH_REPOS:
         path = os.path.join(red_dir, f"{repo}.json")
         assert os.path.isfile(path), f"Missing red-pipeline CI for {repo}"
-    with open(os.path.join(red_dir, "prompt-backend.json")) as f:
+    with open(os.path.join(red_dir, "app-backend.json")) as f:
         data = json.load(f)
     assert data["status"] == "failed"
     # Others should be success
     for repo in GRAPH_REPOS:
-        if repo == "prompt-backend":
+        if repo == "app-backend":
             continue
         with open(os.path.join(red_dir, f"{repo}.json")) as f:
             data = json.load(f)
@@ -178,7 +178,7 @@ def test_safe_release_parses_as_release():
     result = load_release("fixtures/releases/safe.json")
     assert isinstance(result, Release)
     assert result.id == "safe"
-    assert "meridian-gateway" in result.repos
+    assert "gateway" in result.repos
 
 
 def test_cyclic_graph_release_returns_checklist():

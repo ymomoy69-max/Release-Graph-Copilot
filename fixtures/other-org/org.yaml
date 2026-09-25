@@ -1,0 +1,20 @@
+name: other-org
+workspace_root: fixtures/other-org/workspace
+graph: fixtures/other-org/graph.yaml
+ci_dir: fixtures/other-org/ci
+catalog: fixtures/other-org/catalog.json
+citations: fixtures/other-org/citations.yaml
+pipeline_file: pipeline.yaml
+flyway_dir: db/migration
+workflow_config_dir: workflow-configs
+workflow_contract: rules-service/contract/workflow-contract.yaml
+feature_flags: api/config/feature-flags.yaml
+feature_config: api/feature-config/published.yaml
+etl_job: jobs/jobs/consume.yaml
+etl_repo: jobs
+flag_repo: api
+playwright_readme: web/tests/README.md
+playwright_timings: web/tests/timings.json
+affected_repos:
+  - api
+  - jobs

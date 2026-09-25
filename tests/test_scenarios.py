@@ -96,7 +96,7 @@ def test_unsafe_flag_flip_block_report():
     fc_check = next(c for c in d["checks"] if c["id"] == "fc_etl")
     flip_finding = next(f for f in fc_check["findings"] if f["code"] == "flag_flip_without_rehydrate")
     quote = "rehydrate must run before flag flip to GIT"
-    with open("fixtures/workspace/bitbucket-db-migration/README.md") as f:
+    with open("fixtures/workspace/ops-runbooks/README.md") as f:
         lines = f.readlines()
     expected_line = next(i + 1 for i, line in enumerate(lines) if line.rstrip() == quote)
     assert flip_finding["citation"]["line"] == expected_line
@@ -106,7 +106,7 @@ def test_unsafe_flag_flip_affected_repos():
     d = get_checklist("unsafe-flag-flip")
     fc_check = next(c for c in d["checks"] if c["id"] == "fc_etl")
     flip_finding = next(f for f in fc_check["findings"] if f["code"] == "flag_flip_without_rehydrate")
-    assert flip_finding["repos"] == ["nc-enterprise-ai-platform-etl-jobs", "prompt-backend"]
+    assert flip_finding["repos"] == ["app-backend", "data-pipeline"]
 
 
 def test_unsafe_flag_flip_other_four_pass():
@@ -145,7 +145,7 @@ def test_red_pipeline_only_pipeline_blocked():
             codes = [f["code"] for f in check["findings"]]
             assert "pipeline_not_success" in codes
             repos = [f["repos"] for f in check["findings"] if f["code"] == "pipeline_not_success"]
-            assert any("prompt-backend" in r for r in repos)
+            assert any("app-backend" in r for r in repos)
         else:
             assert check["status"] == "pass"
 

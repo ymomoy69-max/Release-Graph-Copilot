@@ -14,9 +14,9 @@ if TYPE_CHECKING:
     from rgc.workspace import WorkspaceView
 
 
-# Default Meridian paths (overridden by org_config)
-_DEFAULT_README = "meridian-ui/tests/README.md"
-_DEFAULT_TIMINGS = "meridian-ui/tests/timings.json"
+# Default paths (overridden by org_config)
+_DEFAULT_README = "frontend/tests/README.md"
+_DEFAULT_TIMINGS = "frontend/tests/timings.json"
 FOLDER_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
@@ -80,7 +80,7 @@ def run(
             code="missing_playwright_map",
             message="Playwright map could not be read.",
             repos=(),
-            suggested_fix="Restore meridian-ui/tests/README.md.",
+            suggested_fix="Restore the Playwright map README.",
             citation=None,
         ))
         e2e = E2EScope(folders=(), estimate_seconds=None, estimate_display="unknown")
@@ -113,7 +113,7 @@ def run(
                 code="missing_playwright_map",
                 message="Playwright map could not be read.",
                 repos=(),
-                suggested_fix="Restore meridian-ui/tests/README.md.",
+                suggested_fix="Restore the Playwright map README.",
                 citation=None,
             ))
             e2e = E2EScope(folders=(), estimate_seconds=None, estimate_display="unknown")

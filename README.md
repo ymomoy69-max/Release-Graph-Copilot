@@ -37,6 +37,26 @@ python3 -m venv .venv
 
 Then open http://127.0.0.1:8765/ in your browser.
 
+## Scan a provided organization
+
+Clone your organization's repos into one folder, write an org YAML that describes
+them, and supply a directory of CI status JSON files — the tool does not call a
+git host.
+
+```bash
+python3 -m rgc check \
+  --workspace /path/to/org \
+  --config /path/to/org.yaml \
+  --repos api,web \
+  --ci-dir /path/to/ci-status \
+  --out out/scan
+```
+
+A direct scan reads the files as they are on disk; a proposed flag change must be
+passed as an overlay using `--overlays overlays.json`.
+
+
+
 ## Run tests
 
 ```bash

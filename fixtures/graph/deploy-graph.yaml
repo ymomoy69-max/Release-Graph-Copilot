@@ -1,29 +1,29 @@
 nodes:
-  - id: meridian-gateway
+  - id: gateway
     role: gateway
-  - id: prompt-backend
+  - id: app-backend
     role: backend
-  - id: user-stack-ansible
+  - id: infra
     role: infrastructure
-  - id: meridian-ui
+  - id: frontend
     role: ui
-  - id: workflow-service
+  - id: rules-engine
     role: rules
-  - id: nc-enterprise-ai-platform-etl-jobs
+  - id: data-pipeline
     role: etl
 edges:
-  - from: meridian-gateway
-    to: prompt-backend
+  - from: gateway
+    to: app-backend
     relation: must_deploy_before
-  - from: prompt-backend
-    to: user-stack-ansible
+  - from: app-backend
+    to: infra
     relation: must_deploy_before
-  - from: user-stack-ansible
-    to: meridian-ui
+  - from: infra
+    to: frontend
     relation: triggers
-  - from: meridian-ui
-    to: workflow-service
+  - from: frontend
+    to: rules-engine
     relation: depends_on
-  - from: workflow-service
-    to: nc-enterprise-ai-platform-etl-jobs
+  - from: rules-engine
+    to: data-pipeline
     relation: feeds

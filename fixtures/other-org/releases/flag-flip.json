@@ -1,0 +1,16 @@
+{
+  "id": "other-org-flag-flip",
+  "question": "Is this deploy safe?",
+  "repos": ["api", "jobs"],
+  "graph": "fixtures/other-org/graph.yaml",
+  "ci_dir": "fixtures/other-org/ci",
+  "workspace_root": "fixtures/other-org/workspace",
+  "config": "fixtures/other-org/org.yaml",
+  "changed_paths": [],
+  "overlays": [
+    {
+      "path": "api/config/feature-flags.yaml",
+      "content": "storage: GIT\n"
+    }
+  ]
+}

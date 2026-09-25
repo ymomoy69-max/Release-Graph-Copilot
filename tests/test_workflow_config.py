@@ -6,8 +6,8 @@ from rgc.workspace import WorkspaceView
 
 
 CLOSURE_GATEWAY = frozenset([
-    "meridian-gateway", "prompt-backend", "user-stack-ansible",
-    "meridian-ui", "workflow-service", "nc-enterprise-ai-platform-etl-jobs",
+    "gateway", "app-backend", "infra",
+    "frontend", "rules-engine", "data-pipeline",
 ])
 
 
@@ -15,7 +15,7 @@ def make_release(overlays=()):
     return Release(
         id="test",
         question="q",
-        repos=("meridian-gateway",),
+        repos=("gateway",),
         graph_path="fixtures/graph/deploy-graph.yaml",
         ci_dir="fixtures/ci-status/green",
         changed_paths=(),

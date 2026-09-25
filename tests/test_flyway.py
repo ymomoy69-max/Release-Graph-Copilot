@@ -15,7 +15,7 @@ def run_with_overlays(overlays, workspace_root="fixtures/workspace"):
     release = Release(
         id="test",
         question="q",
-        repos=("meridian-gateway",),
+        repos=("gateway",),
         graph_path="fixtures/graph/deploy-graph.yaml",
         ci_dir="fixtures/ci-status/green",
         changed_paths=(),
@@ -24,7 +24,7 @@ def run_with_overlays(overlays, workspace_root="fixtures/workspace"):
     )
     ws = WorkspaceView(release)
     cat = make_catalog()
-    return flyway.run(release, frozenset(["prompt-backend"]), ws, cat)
+    return flyway.run(release, frozenset(["app-backend"]), ws, cat)
 
 
 # ---------------------------------------------------------------------------
@@ -42,7 +42,7 @@ def test_baseline_passes():
 # ---------------------------------------------------------------------------
 
 def _make_migration_release(tmp_path, sql_content, filename="V1__test.sql"):
-    repo = "prompt-backend"
+    repo = "app-backend"
     migration_dir = tmp_path / repo / "db" / "migration"
     migration_dir.mkdir(parents=True)
     (migration_dir / filename).write_text(sql_content)
@@ -133,7 +133,7 @@ def test_v1_without_double_underscore_ignored(tmp_path):
 
 def test_empty_migration_set_passes(tmp_path):
     """Empty migration set passes."""
-    repo = "prompt-backend"
+    repo = "app-backend"
     repo_dir = tmp_path / repo
     repo_dir.mkdir(parents=True)
     migration_dir = repo_dir / "db" / "migration"
@@ -161,7 +161,7 @@ def test_empty_migration_set_passes(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_duplicate_v2_blocks(tmp_path):
-    repo = "prompt-backend"
+    repo = "app-backend"
     migration_dir = tmp_path / repo / "db" / "migration"
     migration_dir.mkdir(parents=True)
     (migration_dir / "V1__init.sql").write_text("SELECT 1;\n")
@@ -183,7 +183,7 @@ def test_duplicate_v2_blocks(tmp_path):
 
 def test_version_gap_1_and_3(tmp_path):
     """Versions 1 and 3 with no 2 block as a gap."""
-    repo = "prompt-backend"
+    repo = "app-backend"
     migration_dir = tmp_path / repo / "db" / "migration"
     migration_dir.mkdir(parents=True)
     (migration_dir / "V1__init.sql").write_text("SELECT 1;\n")
@@ -204,7 +204,7 @@ def test_version_gap_1_and_3(tmp_path):
 
 def test_only_v2_blocks_as_gap(tmp_path):
     """Only V2 blocks as a gap because the sequence must start at 1."""
-    repo = "prompt-backend"
+    repo = "app-backend"
     migration_dir = tmp_path / repo / "db" / "migration"
     migration_dir.mkdir(parents=True)
     (migration_dir / "V2__add.sql").write_text("SELECT 1;\n")
@@ -224,7 +224,7 @@ def test_only_v2_blocks_as_gap(tmp_path):
 
 def test_r_script_does_not_create_version_gap(tmp_path):
     """R__rebuild.sql with safe SQL does not create a version gap."""
-    repo = "prompt-backend"
+    repo = "app-backend"
     migration_dir = tmp_path / repo / "db" / "migration"
     migration_dir.mkdir(parents=True)
     (migration_dir / "V1__init.sql").write_text("SELECT 1;\n")

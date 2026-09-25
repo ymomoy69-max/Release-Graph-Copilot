@@ -16,7 +16,7 @@ def make_go_checklist(release_id="safe", folders=None, estimate_seconds=260):
         "gate": "pending_approval",
         "gate_prompt": "Ready to trigger E2E. Risk: LOW. Approve?",
         "block_report": None,
-        "deploy_order": ["meridian-gateway"],
+        "deploy_order": ["gateway"],
         "checks": [],
         "e2e": {
             "folders": folders,

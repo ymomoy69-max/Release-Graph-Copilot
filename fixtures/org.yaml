@@ -1,4 +1,4 @@
-name: meridian
+name: acme
 workspace_root: fixtures/workspace
 graph: fixtures/graph/deploy-graph.yaml
 ci_dir: fixtures/ci-status/green
@@ -7,14 +7,14 @@ citations: fixtures/rules/citations.yaml
 pipeline_file: pipeline.yaml
 flyway_dir: db/migration
 workflow_config_dir: workflow-configs
-workflow_contract: workflow-service/contract/workflow-contract.yaml
-feature_flags: prompt-backend/config/feature-flags.yaml
-feature_config: prompt-backend/feature-config/published.yaml
-etl_job: nc-enterprise-ai-platform-etl-jobs/jobs/consume.yaml
-etl_repo: nc-enterprise-ai-platform-etl-jobs
-flag_repo: prompt-backend
-playwright_readme: meridian-ui/tests/README.md
-playwright_timings: meridian-ui/tests/timings.json
+workflow_contract: rules-engine/contract/workflow-contract.yaml
+feature_flags: app-backend/config/feature-flags.yaml
+feature_config: app-backend/feature-config/published.yaml
+etl_job: data-pipeline/jobs/consume.yaml
+etl_repo: data-pipeline
+flag_repo: app-backend
+playwright_readme: frontend/tests/README.md
+playwright_timings: frontend/tests/timings.json
 affected_repos:
-  - prompt-backend
-  - nc-enterprise-ai-platform-etl-jobs
+  - app-backend
+  - data-pipeline

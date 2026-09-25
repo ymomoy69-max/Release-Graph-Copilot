@@ -1,8 +1,8 @@
-# Bitbucket database migration
+# Acme ops runbook
 
 ## 1. Purpose
 
-This runbook describes how prompt-backend moves storage between MYSQL and GIT.
+This runbook describes how app-backend moves storage between MYSQL and GIT.
 
 ## 2. Backup
 

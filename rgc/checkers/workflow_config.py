@@ -23,7 +23,7 @@ def run(
     org_config: "OrgConfig | None" = None,
 ) -> CheckResult:
     workflow_config_dir = org_config.workflow_config_dir if org_config else "workflow-configs"
-    contract_path = org_config.workflow_contract if org_config else "workflow-service/contract/workflow-contract.yaml"
+    contract_path = org_config.workflow_contract if org_config else "rules-engine/contract/workflow-contract.yaml"
 
     findings: list[Finding] = []
 

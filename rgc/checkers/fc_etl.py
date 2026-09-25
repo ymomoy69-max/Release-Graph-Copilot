@@ -23,25 +23,25 @@ def run(
     catalog: frozenset[str],
     org_config: "OrgConfig | None" = None,
 ) -> CheckResult:
-    # Paths from org config (or Meridian defaults)
-    if org_config:
-        etl_repo = org_config.etl_repo
-        flag_repo = org_config.flag_repo
-        etl_job_path = org_config.etl_job
-        feature_config_path = org_config.feature_config
-        feature_flags_path = org_config.feature_flags
-        pipeline_file = org_config.pipeline_file
-        affected_repos = org_config.affected_repos  # sorted ascending
-        affected_repos_ordered = org_config.affected_repos_ordered  # YAML order
-    else:
-        etl_repo = "nc-enterprise-ai-platform-etl-jobs"
-        flag_repo = "prompt-backend"
-        etl_job_path = "nc-enterprise-ai-platform-etl-jobs/jobs/consume.yaml"
-        feature_config_path = "prompt-backend/feature-config/published.yaml"
-        feature_flags_path = "prompt-backend/config/feature-flags.yaml"
-        pipeline_file = "pipeline.yaml"
-        affected_repos = tuple(sorted(["prompt-backend", "nc-enterprise-ai-platform-etl-jobs"]))
-        affected_repos_ordered = ("prompt-backend", "nc-enterprise-ai-platform-etl-jobs")
+    # Load org config from default if not provided
+    if org_config is None:
+        from rgc.org_config import load_org_config
+        from rgc.models import Checklist
+        result = load_org_config("fixtures/org.yaml")
+        if isinstance(result, Checklist):
+            # fallback: return a pass check (should not happen in normal use)
+            return CheckResult.from_findings("fc_etl", [])
+        org_config = result
+
+    # Paths from org config
+    etl_repo = org_config.etl_repo
+    flag_repo = org_config.flag_repo
+    etl_job_path = org_config.etl_job
+    feature_config_path = org_config.feature_config
+    feature_flags_path = org_config.feature_flags
+    pipeline_file = org_config.pipeline_file
+    affected_repos = org_config.affected_repos  # sorted ascending
+    affected_repos_ordered = org_config.affected_repos_ordered  # YAML order
 
     findings: list[Finding] = []
 

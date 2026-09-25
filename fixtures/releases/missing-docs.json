@@ -1,18 +1,18 @@
 {
   "id": "missing-docs",
   "question": "Is this deploy safe?",
-  "repos": ["prompt-backend"],
+  "repos": ["app-backend"],
   "graph": "fixtures/graph/deploy-graph.yaml",
   "ci_dir": "fixtures/ci-status/green",
   "changed_paths": [],
   "overlays": [
     {
-      "path": "prompt-backend/config/feature-flags.yaml",
+      "path": "app-backend/config/feature-flags.yaml",
       "content": "storage: GIT\n"
     },
     {
-      "path": "bitbucket-db-migration/README.md",
-      "content": "# Database migration\n\n## 1. Overview\n\nThis runbook has no flag-flip rule.\n"
+      "path": "ops-runbooks/README.md",
+      "content": "# Ops runbook\n\n## 1. Overview\n\nThis runbook has no flag-flip rule.\n"
     }
   ]
 }

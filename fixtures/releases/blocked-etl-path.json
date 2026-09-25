@@ -1,13 +1,13 @@
 {
   "id": "blocked-etl-path",
   "question": "Is this deploy safe?",
-  "repos": ["prompt-backend"],
+  "repos": ["app-backend"],
   "graph": "fixtures/graph/deploy-graph.yaml",
   "ci_dir": "fixtures/ci-status/green",
   "changed_paths": [],
   "overlays": [
     {
-      "path": "prompt-backend/feature-config/published.yaml",
+      "path": "app-backend/feature-config/published.yaml",
       "content": "published: false\n"
     }
   ]

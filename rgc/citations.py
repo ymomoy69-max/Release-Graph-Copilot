@@ -14,10 +14,7 @@ if TYPE_CHECKING:
     from rgc.workspace import WorkspaceView
     from rgc.org_config import OrgConfig
 
-CITATIONS_PATH = "fixtures/rules/citations.yaml"
-
-
-def _load_rules(path: str = CITATIONS_PATH) -> list[dict]:
+def _load_rules(path: str = "fixtures/rules/citations.yaml") -> list[dict]:
     """Load citation rules from YAML."""
     try:
         with open(path, "r", encoding="utf-8") as fh:
@@ -126,6 +123,14 @@ def attach_citations(
     Walk findings, attach citations, build block_report.
     Returns (updated_checks, block_report_or_None).
     """
+    # Load org config from default if not provided
+    if org_config is None:
+        from rgc.org_config import load_org_config
+        from rgc.models import Checklist as _CL
+        _result = load_org_config("fixtures/org.yaml")
+        if not isinstance(_result, _CL):
+            org_config = _result
+
     # Load rules from org config or default
     if rules is None:
         if org_config is not None:
@@ -139,7 +144,8 @@ def attach_citations(
     if org_config is not None:
         affected_ordered = org_config.affected_repos_ordered
     else:
-        affected_ordered = ("prompt-backend", "nc-enterprise-ai-platform-etl-jobs")
+        # Should not reach here in normal use
+        affected_ordered = ()
 
     # Build code → rule map
     rule_map: dict[str, dict] = {r["code"]: r for r in rules}
@@ -166,9 +172,8 @@ def attach_citations(
             else:
                 # Attach citation; use rule's suggested_fix only if finding's is null
                 suggested_fix = finding.suggested_fix if finding.suggested_fix else rule.get("suggested_fix")
-                # Preserve location/snippet from the original finding, add citation snippet
-                cit_location = f"{citation.display}:{citation.line}"
-                cit_snippet = workspace.get_snippet(citation.display, citation.line)
+                # Preserve the original finding's location/snippet (e.g. feature-flags.yaml:1)
+                # The citation object carries its own section/line for display
                 new_finding = Finding(
                     severity=finding.severity,
                     code=finding.code,
@@ -176,8 +181,8 @@ def attach_citations(
                     repos=finding.repos,
                     suggested_fix=suggested_fix,
                     citation=citation,
-                    location=cit_location,
-                    snippet=cit_snippet,
+                    location=finding.location,
+                    snippet=finding.snippet,
                 )
                 updated_findings.append(new_finding)
 
