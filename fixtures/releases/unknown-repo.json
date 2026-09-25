@@ -1,0 +1,9 @@
+{
+  "id": "unknown-repo",
+  "question": "Is this deploy safe?",
+  "repos": ["not-a-real-repo"],
+  "graph": "fixtures/graph/deploy-graph.yaml",
+  "ci_dir": "fixtures/ci-status/green",
+  "changed_paths": [],
+  "overlays": []
+}

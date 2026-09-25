@@ -1,0 +1,12 @@
+nodes:
+  - id: a
+    role: test
+  - id: b
+    role: test
+edges:
+  - from: a
+    to: b
+    relation: must_deploy_before
+  - from: b
+    to: a
+    relation: must_deploy_before

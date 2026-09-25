@@ -1,0 +1,14 @@
+{
+  "id": "unsafe-flyway",
+  "question": "Is this deploy safe?",
+  "repos": ["meridian-gateway"],
+  "graph": "fixtures/graph/deploy-graph.yaml",
+  "ci_dir": "fixtures/ci-status/green",
+  "changed_paths": [],
+  "overlays": [
+    {
+      "path": "prompt-backend/db/migration/V3__drop_users.sql",
+      "content": "DROP TABLE users;\n"
+    }
+  ]
+}

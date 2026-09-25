@@ -1,0 +1,2 @@
+- prefix: api/ -> folder: api-e2e
+- fallback folder: smoke

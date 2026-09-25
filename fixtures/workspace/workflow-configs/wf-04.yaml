@@ -1,0 +1,5 @@
+name: wf-04
+version: 1
+steps:
+  - id: start
+timeout_seconds: 30

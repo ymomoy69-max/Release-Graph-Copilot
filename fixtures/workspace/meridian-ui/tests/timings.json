@@ -1,0 +1,6 @@
+{
+  "backend": 90,
+  "etl": 90,
+  "gateway": 80,
+  "smoke": 40
+}

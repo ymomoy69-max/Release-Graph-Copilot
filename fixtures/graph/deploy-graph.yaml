@@ -1,0 +1,29 @@
+nodes:
+  - id: meridian-gateway
+    role: gateway
+  - id: prompt-backend
+    role: backend
+  - id: user-stack-ansible
+    role: infrastructure
+  - id: meridian-ui
+    role: ui
+  - id: workflow-service
+    role: rules
+  - id: nc-enterprise-ai-platform-etl-jobs
+    role: etl
+edges:
+  - from: meridian-gateway
+    to: prompt-backend
+    relation: must_deploy_before
+  - from: prompt-backend
+    to: user-stack-ansible
+    relation: must_deploy_before
+  - from: user-stack-ansible
+    to: meridian-ui
+    relation: triggers
+  - from: meridian-ui
+    to: workflow-service
+    relation: depends_on
+  - from: workflow-service
+    to: nc-enterprise-ai-platform-etl-jobs
+    relation: feeds

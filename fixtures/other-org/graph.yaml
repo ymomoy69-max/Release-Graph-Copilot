@@ -1,0 +1,14 @@
+nodes:
+  - id: api
+    role: backend
+  - id: web
+    role: frontend
+  - id: jobs
+    role: etl
+edges:
+  - from: api
+    to: web
+    relation: must_deploy_before
+  - from: web
+    to: jobs
+    relation: must_deploy_before

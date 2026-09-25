@@ -1,0 +1,12 @@
+version: 1
+required:
+  - name
+  - version
+  - steps
+fields:
+  name: string
+  version: int
+  steps: list
+  timeout_seconds: int
+allowed_versions:
+  - 1

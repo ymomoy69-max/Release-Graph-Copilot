@@ -1,0 +1,6 @@
+rules:
+  - code: flag_flip_without_rehydrate
+    file: fixtures/other-org/workspace/docs/RUNBOOK.md
+    section: "9.1"
+    quote: rehydrate must run before flag flip to GIT
+    suggested_fix: Add rehydrate step before flag flip.

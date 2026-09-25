@@ -1,0 +1,9 @@
+{
+  "id": "cyclic-graph",
+  "question": "Is this deploy safe?",
+  "repos": ["a"],
+  "graph": "fixtures/graph/cyclic-graph.yaml",
+  "ci_dir": "fixtures/ci-status/green",
+  "changed_paths": [],
+  "overlays": []
+}

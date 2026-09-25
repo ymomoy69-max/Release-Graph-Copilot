@@ -1,0 +1,9 @@
+{
+  "id": "empty-release",
+  "question": "Is this deploy safe?",
+  "repos": [],
+  "graph": "fixtures/graph/deploy-graph.yaml",
+  "ci_dir": "fixtures/ci-status/green",
+  "changed_paths": [],
+  "overlays": []
+}

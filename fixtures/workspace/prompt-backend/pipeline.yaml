@@ -1,0 +1,4 @@
+steps:
+  - name: build
+  - name: test
+  - name: deploy

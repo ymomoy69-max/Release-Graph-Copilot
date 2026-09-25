@@ -1,0 +1,14 @@
+{
+  "id": "broken-workflow-contract",
+  "question": "Is this deploy safe?",
+  "repos": ["meridian-gateway"],
+  "graph": "fixtures/graph/deploy-graph.yaml",
+  "ci_dir": "fixtures/ci-status/green",
+  "changed_paths": [],
+  "overlays": [
+    {
+      "path": "workflow-configs/wf-01.yaml",
+      "content": "name: wf-01\nversion: \"nope\"\n"
+    }
+  ]
+}

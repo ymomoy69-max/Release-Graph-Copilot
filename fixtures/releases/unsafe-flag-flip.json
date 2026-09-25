@@ -1,0 +1,14 @@
+{
+  "id": "unsafe-flag-flip",
+  "question": "Is this deploy safe?",
+  "repos": ["prompt-backend", "nc-enterprise-ai-platform-etl-jobs"],
+  "graph": "fixtures/graph/deploy-graph.yaml",
+  "ci_dir": "fixtures/ci-status/green",
+  "changed_paths": [],
+  "overlays": [
+    {
+      "path": "prompt-backend/config/feature-flags.yaml",
+      "content": "storage: GIT\n"
+    }
+  ]
+}

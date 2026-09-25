@@ -1,0 +1,2 @@
+requires_feature_config: true
+job: consume
