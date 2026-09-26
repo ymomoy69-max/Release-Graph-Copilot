@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -11,7 +11,10 @@ import {
   type Edge,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { Link } from "react-router-dom";
 import { api, type GraphPayload, type GraphNode } from "../api";
+import { notifyGraphRefresh } from "../graphRefresh";
+import { useGraphAutoRefresh } from "../useGraphAutoRefresh";
 
 const STATUS: Record<string, { bg: string; border: string; label: string }> = {
   broken: { bg: "#FEF2F2", border: "#DC2626", label: "Problem" },
@@ -38,62 +41,105 @@ function layout(raw: GraphNode[]): { x: number; y: number }[] {
   return raw.map((n) => pos.get(n.id) || { x: 0, y: 0 });
 }
 
+function applyGraphToFlow(
+  g: GraphPayload,
+  setGraph: (g: GraphPayload) => void,
+  setNodes: (n: Node[]) => void,
+  setEdges: (e: Edge[]) => void,
+  picked: string | null,
+  setPicked: (id: string | null) => void,
+) {
+  setGraph(g);
+  const positions = layout(g.nodes);
+  const n: Node[] = g.nodes.map((node, i) => {
+    const st = STATUS[node.status || "ok"] || STATUS.ok;
+    return {
+      id: node.id,
+      data: { ...node, type: "service" },
+      position: positions[i],
+      style: {
+        background: st.bg,
+        border: `2px solid ${st.border}`,
+        color: "#0E172A",
+        borderRadius: 10,
+        padding: 10,
+        fontSize: 12,
+        width: 200,
+        fontWeight: node.status === "broken" ? 650 : 500,
+      },
+    };
+  });
+  const e: Edge[] = g.edges.map((edge) => ({
+    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+    label: edge.broken ? "breaking" : undefined,
+    animated: Boolean(edge.broken),
+    style: edge.broken
+      ? { stroke: "#DC2626", strokeWidth: 2.6 }
+      : { stroke: "#BDD0F9", strokeWidth: 1.4 },
+    labelStyle: { fill: "#DC2626", fontSize: 10, fontWeight: 700 },
+    markerEnd: {
+      type: MarkerType.ArrowClosed,
+      color: edge.broken ? "#DC2626" : "#BDD0F9",
+      width: 16,
+      height: 16,
+    },
+  }));
+  setNodes(n);
+  setEdges(e);
+  const ids = new Set(g.nodes.map((x) => x.id));
+  if (picked && ids.has(picked)) return;
+  const firstBroken =
+    g.nodes.find((x) => x.status === "broken") || g.nodes.find((x) => x.status === "warning");
+  setPicked(firstBroken?.id || g.nodes[0]?.id || null);
+}
+
 export default function GraphPage({ projectId }: { projectId: number }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [graph, setGraph] = useState<GraphPayload | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
   const [err, setErr] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  const pickedRef = useRef(picked);
+  pickedRef.current = picked;
+  const hasGraphRef = useRef(false);
+
+  const loadGraph = useCallback(
+    (opts?: { initial?: boolean }) => {
+      const isInitial = opts?.initial ?? false;
+      if (isInitial) setErr("");
+      setRefreshing(true);
+      return api
+        .graph(projectId)
+        .then((g) => {
+          applyGraphToFlow(g, setGraph, setNodes, setEdges, pickedRef.current, setPicked);
+          hasGraphRef.current = true;
+          setUpdatedAt(new Date());
+        })
+        .catch((e) => {
+          if (isInitial || !hasGraphRef.current) {
+            setErr(e instanceof Error ? e.message : "Graph failed");
+          }
+        })
+        .finally(() => setRefreshing(false));
+    },
+    [projectId, setNodes, setEdges],
+  );
 
   useEffect(() => {
-    setErr("");
-    api
-      .graph(projectId)
-      .then((g) => {
-        setGraph(g);
-        const positions = layout(g.nodes);
-        const n: Node[] = g.nodes.map((node, i) => {
-          const st = STATUS[node.status || "ok"] || STATUS.ok;
-          return {
-            id: node.id,
-            data: { ...node, type: "service" },
-            position: positions[i],
-            style: {
-              background: st.bg,
-              border: `2px solid ${st.border}`,
-              color: "#0E172A",
-              borderRadius: 10,
-              padding: 10,
-              fontSize: 12,
-              width: 200,
-              fontWeight: node.status === "broken" ? 650 : 500,
-            },
-          };
-        });
-        const e: Edge[] = g.edges.map((edge) => ({
-          id: edge.id,
-          source: edge.source,
-          target: edge.target,
-          label: edge.broken ? "breaking" : undefined,
-          animated: Boolean(edge.broken),
-          style: edge.broken
-            ? { stroke: "#DC2626", strokeWidth: 2.6 }
-            : { stroke: "#BDD0F9", strokeWidth: 1.4 },
-          labelStyle: { fill: "#DC2626", fontSize: 10, fontWeight: 700 },
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            color: edge.broken ? "#DC2626" : "#BDD0F9",
-            width: 16,
-            height: 16,
-          },
-        }));
-        setNodes(n);
-        setEdges(e);
-        const firstBroken = g.nodes.find((x) => x.status === "broken") || g.nodes.find((x) => x.status === "warning");
-        setPicked(firstBroken?.id || g.nodes[0]?.id || null);
-      })
-      .catch((e) => setErr(e instanceof Error ? e.message : "Graph failed"));
-  }, [projectId, setNodes, setEdges]);
+    hasGraphRef.current = false;
+    setPicked(null);
+    void loadGraph({ initial: true });
+  }, [projectId, loadGraph]);
+
+  const refreshGraph = useCallback(() => {
+    void loadGraph();
+  }, [loadGraph]);
+
+  useGraphAutoRefresh(projectId, refreshGraph);
 
   const selected = useMemo(
     () => graph?.nodes.find((n) => n.id === picked) || null,
@@ -115,7 +161,7 @@ export default function GraphPage({ projectId }: { projectId: number }) {
     setPicked(edge.target);
   }, []);
 
-  if (err) return <p className="error">{err}</p>;
+  if (err && !graph) return <p className="error">{err}</p>;
 
   return (
     <>
@@ -124,10 +170,29 @@ export default function GraphPage({ projectId }: { projectId: number }) {
           <h2>Release Graph</h2>
           <p className="muted">
             Arrows mean “this service calls that one”. A red arrow is the link that breaks if the
-            box it points to fails.
+            box it points to fails. This map re-scans the workspace every ~20s and after scans,
+            incidents, or fix actions elsewhere in the app.
           </p>
+          {updatedAt && (
+            <p className="muted graph-live" style={{ marginTop: 6 }}>
+              {refreshing ? "Refreshing…" : `Last updated ${updatedAt.toLocaleTimeString()}`}
+            </p>
+          )}
         </div>
+        <button
+          type="button"
+          className="secondary"
+          disabled={refreshing}
+          onClick={() => {
+            notifyGraphRefresh({ projectId, reason: "manual" });
+            void loadGraph();
+          }}
+        >
+          Refresh now
+        </button>
       </div>
+
+      {err && graph && <p className="error">{err}</p>}
 
       {graph && (
         <div className={`graph-banner ${graph.broken_links.length ? "nogo" : "go"}`}>
@@ -144,7 +209,7 @@ export default function GraphPage({ projectId }: { projectId: number }) {
         <span className="muted">Red arrow = breaking link</span>
       </div>
 
-      <div className="graph-wrap">
+      <div className={`graph-wrap ${refreshing ? "graph-refreshing" : ""}`}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -179,6 +244,13 @@ export default function GraphPage({ projectId }: { projectId: number }) {
                 <p className="muted" style={{ margin: "0.35rem 0 0" }}>
                   {selected.file}
                   {selected.line ? `:${selected.line}` : ""}
+                </p>
+              )}
+              {selected?.scan_incident_id && (
+                <p style={{ margin: "0.5rem 0 0" }}>
+                  <Link to={`/incidents?pick=${selected.scan_incident_id}`}>
+                    Open code-scan incident #{selected.scan_incident_id}
+                  </Link>
                 </p>
               )}
             </>

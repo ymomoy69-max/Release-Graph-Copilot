@@ -56,7 +56,7 @@ def _format_issues(analysis: dict[str, Any]) -> str:
         lines.append(safety.get("note") or "A person must approve each fix PR.")
     created = analysis.get("proposals") or []
     if created:
-        lines.append(f"Opened {len(created)} in-app demo PR(s) for employees to verify.")
+        lines.append(f"Opened {len(created)} in-app fix ticket(s) from the scanner for employees to verify.")
     return "\n".join(lines)
 
 
@@ -81,7 +81,7 @@ def answer_question(db: Session, project_id: int, question: str) -> tuple[str, l
         items = prs.get("pull_requests") or []
         if not items:
             return "No in-app fix PRs yet. Scan a workspace on Readiness to open assigned tickets from engine findings.", calls
-        lines = ["In-app demo PRs (not GitHub or Jira):"]
+        lines = ["In-app fix tickets (from workspace scan):"]
         for p in items[:12]:
             who = (p.get("assignee") or {}).get("full_name") or "unassigned"
             lines.append(f"#{p['number']} {p['status']} → {who} · {p.get('file')}")

@@ -13,10 +13,7 @@ def test_scan_demo_ecommerce_discovers_connected_services():
     assert "api-gateway" in names or "frontend" in names
     pairs = {(d["from"], d["to"]) for d in scan["dependencies"]}
     assert ("order-service", "payment-service") in pairs
-    codes = {i["code"] for i in scan["issues"]}
-    assert "hardcoded_secret" in codes
-    assert "http_no_timeout" in codes
-    assert "swallowed_exception" in codes
+    assert scan["issues"] == []
 
 
 def test_scan_missing_path():

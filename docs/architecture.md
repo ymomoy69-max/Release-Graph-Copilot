@@ -7,7 +7,7 @@
 | Release safety engine | `rgc/` | Deterministic deploy checks (pipelines, flyway, FC/ETL, org YAML) |
 | Platform API | `releasegraph/` | REST API, auth, DB, risk engine, copilot tools, simulator |
 | Web UI | `web/` | React SPA — dashboard, releases, graph, incidents, copilot |
-| Demo microservices | `demo/ecommerce/` | Simulated storefront services for failure demos |
+| Demo microservices | `demo/ecommerce/`, `demo/streaming/` | E-commerce shop + OTT streaming stacks for graph and failure demos |
 
 ## Data flow
 

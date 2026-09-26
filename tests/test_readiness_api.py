@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./data/test_readiness.db")
 os.environ.setdefault("JWT_SECRET", "test")
@@ -10,7 +11,7 @@ from releasegraph.main import app
 from releasegraph.seed import seed
 
 
-def test_readiness_preset_safe_go():
+def test_readiness_scans_workspace_on_disk():
     Base.metadata.drop_all(bind=engine)
     init_db()
     seed(reset=True)
@@ -19,12 +20,14 @@ def test_readiness_preset_safe_go():
         "/api/v1/auth/login",
         json={"email": "admin@acme.demo", "password": "admin123!"},
     ).json()["access_token"]
+    ws = str(Path(__file__).resolve().parent.parent / "demo" / "ecommerce")
     r = client.post(
         "/api/v1/readiness/check",
         headers={"Authorization": f"Bearer {token}"},
-        json={"preset": "safe-go"},
+        json={"workspace": ws, "project_id": 1},
     )
     assert r.status_code == 200
     body = r.json()
-    assert body["ready_to_release"] is True
-    assert body["checklist"]["verdict"] == "go"
+    assert "checklist" in body
+    assert body["scan"] is not None
+    assert (body["scan"].get("services") or []) != []

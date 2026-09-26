@@ -3,9 +3,11 @@ import { Navigate, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 
+const DEV_HINT = import.meta.env.DEV;
+
 export default function Login() {
-  const [email, setEmail] = useState("admin@acme.demo");
-  const [password, setPassword] = useState("admin123!");
+  const [email, setEmail] = useState(DEV_HINT ? "admin@acme.demo" : "");
+  const [password, setPassword] = useState(DEV_HINT ? "admin123!" : "");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const nav = useNavigate();
@@ -46,8 +48,8 @@ export default function Login() {
         </div>
         <h2>Sign in</h2>
         <p className="muted">
-          Demo account is prefilled. Employees: priya / sam / jordan @acme.demo (engineer123!) to
-          verify Fix PRs. After sign-in, scan a workspace on <strong>Readiness</strong>.
+          Product data comes from the workspace you scan on <strong>Readiness</strong>. Login accounts
+          are only for access control.
         </p>
         <form onSubmit={submit}>
           <label>Email</label>
@@ -61,7 +63,7 @@ export default function Login() {
             autoComplete="current-password"
           />
           {error && <p className="error">{error}</p>}
-          <button type="submit" disabled={loading} style={{ marginTop: "1.25rem", width: "100%" }}>
+          <button type="submit" disabled={loading} style={{ marginTop: 14, width: "100%" }}>
             {loading ? "Signing in…" : "Sign in"}
           </button>
         </form>

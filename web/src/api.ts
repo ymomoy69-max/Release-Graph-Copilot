@@ -39,12 +39,53 @@ export type ReleaseSummary = {
   commits_count: number;
   prs_count: number;
   rollback_available?: boolean;
+  baseline_release_id?: number | null;
+  baseline_version?: string | null;
+  is_production?: boolean;
+  can_deploy?: boolean;
+  can_mark_ready?: boolean;
+  can_start_next?: boolean;
+  can_rollback?: boolean;
   environment?: string | null;
   commits?: { sha: string; message: string; author: string }[];
   pull_requests?: { number: number; title: string }[];
   builds?: { id: number; status: string; duration_seconds: number | null }[];
   tests?: { suite: string; status: string; passed: number; failed: number }[];
   risk_factors?: { factor: string; weight: number; detail: string }[];
+  commits_since_baseline?: { sha: string; message: string; author: string }[];
+  deploy_blocked?: boolean;
+  deploy_block_message?: string | null;
+  deploy_gate?: DeployGate | null;
+};
+
+export type ReadinessPreset = {
+  id: string;
+  label: string;
+  workspace: string;
+  org_config?: string;
+  ci_dir?: string;
+  repos?: string[];
+  hint?: string;
+};
+
+export type Project = {
+  id: number;
+  slug: string;
+  name: string;
+  description: string;
+  workspace_path?: string;
+  org_config_path?: string;
+  readiness_presets?: ReadinessPreset[];
+};
+
+export type ReleaseTrain = {
+  production_release_id: number | null;
+  production_version: string | null;
+  draft_release_id: number | null;
+  draft_version: string | null;
+  draft_status: string | null;
+  draft_baseline_version: string | null;
+  can_start_next: boolean;
 };
 
 export const api = {
@@ -54,24 +95,43 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
   me: () => request<{ email: string; full_name: string; role: string }>("/auth/me"),
-  projects: () =>
-    request<{ id: number; slug: string; name: string; description: string; workspace_path?: string }[]>("/projects"),
+  projects: () => request<Project[]>("/projects"),
   services: (projectId: number) =>
     request<{ id: number; name: string; criticality: string; source_path: string }[]>(
       `/services?project_id=${projectId}`,
     ),
   dashboard: (projectId: number) =>
-    request<{
-      active_releases: number;
-      recent_releases: { id: number; version: string; status: string; risk: string }[];
-      open_incidents: number;
-      failed_builds: number;
-      services_count: number;
-      open_fix_prs?: number;
-      copilot_insight: string;
-    }>(`/dashboard?project_id=${projectId}`),
+    request<DashboardPayload>(`/dashboard?project_id=${projectId}`),
+  releaseTrain: (projectId: number) =>
+    request<ReleaseTrain>(`/release-train?project_id=${projectId}`),
   releases: (projectId: number) => request<ReleaseSummary[]>(`/releases?project_id=${projectId}`),
   release: (id: number) => request<ReleaseSummary>(`/releases/${id}`),
+  startNextRelease: (projectId: number, summary?: string) =>
+    request<ReleaseSummary>(`/releases/next?project_id=${projectId}`, {
+      method: "POST",
+      body: JSON.stringify({ summary: summary || null }),
+    }),
+  markReleaseReady: (releaseId: number) =>
+    request<ReleaseSummary>(`/releases/${releaseId}/mark-ready`, { method: "POST" }),
+  deployRelease: (releaseId: number) =>
+    request<{ version: string; previous_production_version?: string | null }>(
+      `/releases/${releaseId}/deploy`,
+      { method: "POST", body: JSON.stringify({ confirm: true, environment_slug: "production" }) },
+    ),
+  deployPreview: (releaseId: number) =>
+    request<{ release_services: string[]; affected_services: string[] }>(
+      `/releases/${releaseId}/deploy-preview`,
+    ),
+  shopStatus: () => request<ShopStatus>("/shop-status"),
+  syncShopIncidents: (projectId: number) =>
+    request<ShopStatus & { ok: boolean }>(`/incidents/sync-shop?project_id=${projectId}`, {
+      method: "POST",
+    }),
+  rescanVerifyFixPr: (id: number) =>
+    request<FixPr & { scan?: { issues?: number; workspace?: string; error?: string } }>(
+      `/fix-prs/${id}/rescan-verify`,
+      { method: "POST" },
+    ),
   graph: (projectId: number) =>
     request<GraphPayload>(`/graph?project_id=${projectId}`),
   copilotAsk: (projectId: number, question: string) =>
@@ -110,30 +170,22 @@ export const api = {
       }[]
     >("/audit"),
   rollback: (releaseId: number) =>
-    request(`/releases/${releaseId}/rollback`, {
-      method: "POST",
-      body: JSON.stringify({ confirm: true }),
-    }),
-  simulatePaymentFailure: (projectId: number) =>
-    request<{ incident_id: number; message: string; service?: string }>(
-      `/simulator/payment-failure?project_id=${projectId}`,
+    request<{ ok: boolean; production_version: string; rolled_back_version: string }>(
+      `/releases/${releaseId}/rollback`,
+      {
+        method: "POST",
+        body: JSON.stringify({ confirm: true }),
+      },
+    ),
+  runCheckoutFailure: (projectId: number) =>
+    request<{ incident_id: number; message: string; service?: string; http_status?: number; reused?: boolean }>(
+      `/incidents/checkout-failure?project_id=${projectId}`,
       { method: "POST" },
     ),
-  simulateDeploy: (releaseId: number) =>
-    request("/simulator/deploy", {
-      method: "POST",
-      body: JSON.stringify({ release_id: releaseId, environment_slug: "production" }),
-    }),
-  readinessPresets: () => request<{ id: string; label: string; kind: string }[]>("/readiness/presets"),
   readinessCheck: (body: Record<string, unknown>) =>
-    request<{
-      checklist: Record<string, unknown>;
-      ready_to_release: boolean;
-      analysis?: AnalysisPayload | null;
-      scan?: ScanPayload | null;
-    }>("/readiness/check", {
+    request<ReadinessResult>("/readiness/check", {
       method: "POST",
-      body: JSON.stringify(body),
+      body: JSON.stringify({ persist: true, ...body }),
     }),
   scanWorkspace: (workspace: string, projectId?: number) =>
     request<{
@@ -162,6 +214,69 @@ export const api = {
     request<FixPr>(`/fix-prs/${id}/reject`, { method: "POST", body: JSON.stringify({ confirm: true }) }),
   mergeFixPr: (id: number) =>
     request<FixPr>(`/fix-prs/${id}/merge`, { method: "POST", body: JSON.stringify({ confirm: true }) }),
+};
+
+export type DeployGate = {
+  blocked: boolean;
+  message?: string | null;
+  blocking_count: number;
+  issue_count: number;
+  findings: {
+    code: string;
+    file: string;
+    line?: number | null;
+    service?: string;
+    blocking: boolean;
+    incident_id?: number | null;
+  }[];
+};
+
+export type ShopStatus = {
+  gateway_url: string;
+  storefront_url: string;
+  payment_failure_mode: boolean | null;
+  payment_status: string;
+};
+
+export type DashboardPayload = {
+  active_releases: number;
+  recent_releases: { id: number; version: string; status: string; risk: string }[];
+  open_incidents: number;
+  failed_builds: number;
+  services_count: number;
+  open_fix_prs?: number;
+  copilot_insight: string;
+  workspace_path?: string | null;
+  scan_issue_count?: number;
+  scan_high_count?: number;
+  broken_links?: number;
+  production_version?: string | null;
+  production_release_id?: number | null;
+  draft_version?: string | null;
+  production_risk_level?: string | null;
+  production_risk_score?: number | null;
+  production_risk_factors?: { factor: string; weight: number; detail: string }[];
+  deploy_gate?: DeployGate | null;
+  shop_status?: ShopStatus | null;
+  recent_audit?: {
+    id: number;
+    timestamp: string;
+    action: string;
+    entity_type: string;
+    entity_id: string | number;
+    ai_generated: boolean;
+    user_email: string | null;
+  }[];
+};
+
+export type ReadinessResult = {
+  checklist: Record<string, unknown>;
+  ready_to_release: boolean;
+  analysis?: AnalysisPayload | null;
+  scan?: ScanPayload | null;
+  deploy_gate?: DeployGate | null;
+  release_train?: ReleaseTrain | null;
+  org_config_path?: string | null;
 };
 
 export type ScanPayload = {
@@ -234,6 +349,8 @@ export type FixPr = {
   confidence: string;
   llm_accepted: boolean;
   human_required: boolean;
+  verify?: string;
+  verify_message?: string | null;
 };
 
 export type GraphNode = {
@@ -252,6 +369,8 @@ export type GraphNode = {
   affects?: string[];
   updated?: { service: string; version?: string; functionality: string; also?: string[] } | null;
   incident?: string | null;
+  scan_incident_id?: number | null;
+  scan_incidents?: { incident_id: number; title: string; code: string; file: string }[];
 };
 
 export type GraphPayload = {

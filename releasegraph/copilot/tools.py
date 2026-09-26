@@ -18,6 +18,7 @@ from releasegraph.models import (
     ReleaseCommit,
     ReleasePullRequest,
     ReleaseService,
+    ReleaseStatus,
     Service,
     ServiceDependency,
 )
@@ -42,12 +43,17 @@ class CopilotTools:
         return self._release_detail(r)
 
     def get_latest_release(self) -> dict[str, Any]:
-        r = self.db.scalars(
-            select(Release)
-            .where(Release.project_id == self.project_id)
-            .order_by(Release.created_at.desc())
-            .limit(1)
-        ).first()
+        project = self.db.get(Project, self.project_id)
+        r = None
+        if project and project.production_release_id:
+            r = self.db.get(Release, project.production_release_id)
+        if not r:
+            r = self.db.scalars(
+                select(Release)
+                .where(Release.project_id == self.project_id, Release.status == ReleaseStatus.DEPLOYED)
+                .order_by(Release.created_at.desc())
+                .limit(1)
+            ).first()
         if not r:
             return {"error": "no_releases"}
         return self._release_detail(r)
@@ -189,7 +195,7 @@ class CopilotTools:
         rows = self.db.scalars(
             select(FixProposal).where(FixProposal.project_id == self.project_id).order_by(FixProposal.number.desc())
         ).all()
-        return {"demo": True, "count": len(rows), "pull_requests": [serialize_proposal(self.db, p) for p in rows]}
+        return {"in_app": True, "count": len(rows), "pull_requests": [serialize_proposal(self.db, p) for p in rows]}
 
     def run_tool(self, name: str, arguments: dict[str, Any]) -> str:
         mapping = {

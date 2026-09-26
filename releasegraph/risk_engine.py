@@ -23,6 +23,9 @@ def calculate_release_risk(
     production: bool,
     dependency_depth: int,
     recent_incidents: int,
+    *,
+    scan_issue_count: int | None = None,
+    scan_blocking_count: int | None = None,
 ) -> RiskResult:
     score = 0.0
     factors: list[tuple[str, float, str]] = []
@@ -37,8 +40,11 @@ def calculate_release_risk(
 
     high_crit = sum(1 for s in services if s.criticality == "high")
     if high_crit:
-        score += high_crit * 1.5
-        factors.append(("critical_services", high_crit * 1.5, f"{high_crit} high-criticality services"))
+        crit_score = min(high_crit * 1.5, 4.0)
+        score += crit_score
+        factors.append(
+            ("critical_services", crit_score, f"{high_crit} high-criticality service(s)")
+        )
 
     if commit_count > 10:
         score += 1.5
@@ -72,6 +78,33 @@ def calculate_release_risk(
     if recent_incidents:
         score += recent_incidents * 1.0
         factors.append(("recent_incidents", recent_incidents * 1.0, f"{recent_incidents} recent incident(s)"))
+
+    if scan_blocking_count is not None and scan_issue_count is not None:
+        if scan_blocking_count:
+            bump = scan_blocking_count * 3.0
+            score += bump
+            factors.append(
+                (
+                    "scanner_blocking",
+                    bump,
+                    f"{scan_blocking_count} critical scanner finding(s) on disk",
+                )
+            )
+        elif scan_issue_count:
+            bump = scan_issue_count * 0.75
+            score += bump
+            factors.append(
+                (
+                    "scanner_findings",
+                    bump,
+                    f"{scan_issue_count} workspace scanner finding(s) on disk",
+                )
+            )
+        else:
+            score -= 4.0
+            factors.append(
+                ("clean_workspace", -4.0, "Workspace scan reports no code issues on disk")
+            )
 
     if release.rollback_available:
         score -= 0.5

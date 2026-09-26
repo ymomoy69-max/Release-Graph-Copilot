@@ -13,6 +13,22 @@ from sqlalchemy.orm import Session
 
 from releasegraph.analysis import analyze_project
 from releasegraph.audit import log_audit
+from releasegraph.audit_recent import recent_project_audit
+from releasegraph.deploy_gate import deploy_gate_details
+from releasegraph.deploy_preview import deploy_blast_radius
+from releasegraph.release_commits import commits_since_baseline
+from releasegraph.shop_status import shop_status_payload
+from releasegraph.checkout_failure import (
+    CheckoutDidNotFail,
+    ShopUnavailable,
+    run_checkout_failure,
+)
+from releasegraph.checkout_incidents import (
+    checkout_incident_title,
+    sync_checkout_incidents_from_shop,
+)
+from releasegraph.checkout_target import checkout_target_service
+from releasegraph.config import settings
 from releasegraph.auth import create_access_token, get_current_user, require_roles, verify_password
 from releasegraph.copilot.agent import answer_question
 from releasegraph.copilot.tools import CopilotTools
@@ -45,7 +61,22 @@ from releasegraph.models import (
 )
 from releasegraph.graph_insight import build_project_graph
 from releasegraph.proposals import serialize_proposal
-from releasegraph.rgc_bridge import PRESETS, run_manifest_check, run_workspace_check
+from releasegraph.release_train import (
+    ReleaseTrainError,
+    bootstrap_production_baseline,
+    create_next_release,
+    deploy_release,
+    get_draft_release,
+    get_production_release,
+    mark_release_ready,
+    refresh_project_release_risks_from_scan,
+    release_train_state,
+    rollback_to_baseline,
+)
+from releasegraph.verify import verify_fix_ready
+from releasegraph.workspace_sync import apply_workspace_scan
+from releasegraph.project_presets import presets_for_project
+from releasegraph.rgc_bridge import run_workspace_check
 from releasegraph.schemas import (
     AnalysisRequest,
     AssignFixPrRequest,
@@ -53,27 +84,44 @@ from releasegraph.schemas import (
     ConfirmAction,
     CopilotAskRequest,
     CopilotAskResponse,
-    DashboardOut,
+    CreateNextReleaseRequest,
+    DeployReleaseRequest,
     GraphOut,
     IncidentCreate,
     IncidentOut,
     LoginRequest,
     ProjectOut,
+    ReadinessPresetOut,
     ReadinessCheckRequest,
     ReadinessCheckResponse,
-    ReadinessPresetOut,
     ReleaseDetailOut,
     ReleaseOut,
+    DashboardOut,
+    DeployGateOut,
+    ShopStatusOut,
+    ReleaseTrainOut,
     RollbackRequest,
-    SimulateDeployRequest,
     TokenResponse,
     UserOut,
     WorkspaceScanRequest,
 )
-from releasegraph.workspace_scan import persist_scan, scan_workspace, _slug
+from releasegraph.workspace_scan import scan_workspace, _slug
 from rgc.models import Checklist as RgcChecklist
 
 router = APIRouter(prefix="/api/v1")
+
+
+def _project_out(project: Project) -> ProjectOut:
+    presets = presets_for_project(project)
+    return ProjectOut(
+        id=project.id,
+        slug=project.slug,
+        name=project.name,
+        description=project.description or "",
+        workspace_path=project.workspace_path or "",
+        org_config_path=project.org_config_path or "",
+        readiness_presets=[ReadinessPresetOut.model_validate(p) for p in presets],
+    )
 
 
 def _project_for_user(db: Session, user: User, project_id: int) -> Project:
@@ -81,6 +129,54 @@ def _project_for_user(db: Session, user: User, project_id: int) -> Project:
     if not p or p.organization_id != user.organization_id:
         raise HTTPException(status_code=404, detail="Project not found")
     return p
+
+
+def _train_error(exc: ReleaseTrainError) -> HTTPException:
+    return HTTPException(status_code=400, detail=str(exc))
+
+
+def _release_out(db: Session, project: Project, r: Release) -> ReleaseOut:
+    svcs = db.scalars(
+        select(Service.name)
+        .join(ReleaseService, ReleaseService.service_id == Service.id)
+        .where(ReleaseService.release_id == r.id)
+    ).all()
+    cc = db.scalar(select(func.count(ReleaseCommit.id)).where(ReleaseCommit.release_id == r.id)) or 0
+    pc = db.scalar(select(func.count(ReleasePullRequest.id)).where(ReleasePullRequest.release_id == r.id)) or 0
+    baseline_version = None
+    if r.baseline_release_id:
+        base = db.get(Release, r.baseline_release_id)
+        baseline_version = base.version if base else None
+    is_production = project.production_release_id == r.id
+    draft = get_draft_release(db, project.id)
+    gate = deploy_gate_details(db, project)
+    return ReleaseOut(
+        id=r.id,
+        version=r.version,
+        status=r.status.value,
+        risk_level=r.risk_level,
+        risk_score=r.risk_score,
+        summary=r.summary,
+        created_at=r.created_at,
+        rollback_available=r.rollback_available,
+        services=list(svcs),
+        commits_count=cc,
+        prs_count=pc,
+        baseline_release_id=r.baseline_release_id,
+        baseline_version=baseline_version,
+        is_production=is_production,
+        can_deploy=(
+            r.status in {ReleaseStatus.DRAFT, ReleaseStatus.READY}
+            and not is_production
+            and not gate["blocked"]
+        ),
+        can_mark_ready=r.status in {ReleaseStatus.DRAFT, ReleaseStatus.BUILDING, ReleaseStatus.TESTING},
+        can_start_next=draft is None and is_production,
+        can_rollback=is_production and bool(r.baseline_release_id) and r.rollback_available,
+        deploy_blocked=bool(gate["blocked"]),
+        deploy_block_message=gate.get("message"),
+        deploy_gate=DeployGateOut(**gate),
+    )
 
 
 def _project_from_workspace(db: Session, user: User, workspace: str, project_id: int | None) -> Project:
@@ -124,7 +220,7 @@ def list_projects(user: Annotated[User, Depends(get_current_user)], db: Annotate
     rows = db.scalars(
         select(Project).where(Project.organization_id == user.organization_id).order_by(Project.name)
     ).all()
-    return rows
+    return [_project_out(p) for p in rows]
 
 
 @router.get("/services")
@@ -155,13 +251,13 @@ def workspace_scan(
     analysis = None
     if body.persist:
         project = _project_from_workspace(db, user, scan["workspace"], body.project_id)
-        persisted = persist_scan(db, project, scan)
+        persisted = apply_workspace_scan(db, project, scan, actor=user)
         analysis = analyze_project(db, project.id, workspace=scan["workspace"])
         log_audit(db, user.organization_id, "workspace.scan", "project", project.id, user=user)
         db.commit()
         db.refresh(project)
     return {
-        "project": ProjectOut.model_validate(project) if project else None,
+        "project": _project_out(project) if project else None,
         "scan": scan,
         "persisted": persisted,
         "analysis": analysis,
@@ -259,7 +355,7 @@ def approve_fix_pr(
     db: Annotated[Session, Depends(get_db)],
 ):
     if not body.confirm:
-        raise HTTPException(status_code=400, detail="Set confirm=true. A person must explicitly approve this demo PR.")
+        raise HTTPException(status_code=400, detail="Set confirm=true. A person must explicitly approve this fix ticket.")
     p = _proposal_for_user(db, user, proposal_id)
     if p.status in {FixProposalStatus.MERGED, FixProposalStatus.REJECTED}:
         raise HTTPException(status_code=400, detail=f"Cannot approve a {p.status.value} PR")
@@ -289,7 +385,7 @@ def reject_fix_pr(
     db: Annotated[Session, Depends(get_db)],
 ):
     if not body.confirm:
-        raise HTTPException(status_code=400, detail="Set confirm=true to reject this demo PR.")
+        raise HTTPException(status_code=400, detail="Set confirm=true to reject this fix ticket.")
     p = _proposal_for_user(db, user, proposal_id)
     if p.status == FixProposalStatus.MERGED:
         raise HTTPException(status_code=400, detail="Already marked merged")
@@ -328,8 +424,12 @@ def merge_fix_pr(
             status_code=400,
             detail="Four-eyes: a second person must mark merged. Sign in as another release manager or admin.",
         )
+    check = verify_fix_ready(db, p)
+    if not check.get("ok"):
+        raise HTTPException(status_code=400, detail=str(check.get("message") or "Engine still finds this issue."))
     p.status = FixProposalStatus.MERGED
     p.merged_at = datetime.now(timezone.utc)
+    p.verify_message = str(check.get("message") or "")
     log_audit(
         db,
         user.organization_id,
@@ -337,11 +437,30 @@ def merge_fix_pr(
         "fix_proposal",
         p.id,
         user=user,
-        new_state={"number": p.number, "demo": True, "wrote_git": False},
+        new_state={
+            "number": p.number,
+            "in_app": True,
+            "wrote_git": False,
+            "engine_verified_clean": bool(check.get("checked")),
+        },
     )
     db.commit()
     db.refresh(p)
-    return serialize_proposal(db, p)
+    payload = serialize_proposal(db, p)
+    payload["verify"] = check.get("message")
+    return payload
+
+
+def _sync_shop_checkout_incidents(
+    db: Session,
+    project_id: int,
+    user: User | None = None,
+) -> None:
+    out = sync_checkout_incidents_from_shop(
+        db, project_id, settings.shop_gateway_url, actor=user
+    )
+    if out.get("resolved"):
+        db.commit()
 
 
 @router.get("/dashboard", response_model=DashboardOut)
@@ -350,7 +469,8 @@ def dashboard(
     db: Annotated[Session, Depends(get_db)],
     project_id: int = Query(...),
 ):
-    _project_for_user(db, user, project_id)
+    project = _project_for_user(db, user, project_id)
+    _sync_shop_checkout_incidents(db, project_id, user)
     active = db.scalar(
         select(func.count(Release.id)).where(
             Release.project_id == project_id,
@@ -391,19 +511,77 @@ def dashboard(
     latest = db.scalars(
         select(Release).where(Release.project_id == project_id).order_by(Release.created_at.desc()).limit(1)
     ).first()
+    workspace = (project.workspace_path or "") if project else ""
+    scan_issue_count = 0
+    scan_high_count = 0
+    broken_links = 0
+    workspace_label = None
+    if workspace and Path(workspace).is_dir():
+        try:
+            live = scan_workspace(workspace)
+            workspace_label = live.get("workspace") or workspace
+            issues = live.get("issues") or []
+            scan_issue_count = len(issues)
+            scan_high_count = sum(
+                1 for i in issues if i.get("code") in {"hardcoded_secret", "sql_fstring"}
+            )
+            graph = build_project_graph(db, project_id)
+            broken_links = len(graph.get("broken_links") or [])
+            refresh_project_release_risks_from_scan(db, project, live)
+            db.commit()
+            recent = db.scalars(
+                select(Release)
+                .where(Release.project_id == project_id)
+                .order_by(Release.created_at.desc())
+                .limit(5)
+            ).all()
+        except OSError:
+            pass
+
     insight_bits = []
-    if latest:
+    if workspace_label:
+        insight_bits.append(
+            f"Live scan of {workspace_label}: {scan_issue_count} code issue(s)"
+            f"{f', {scan_high_count} high severity' if scan_high_count else ''}."
+        )
+        if broken_links:
+            insight_bits.append(f"{broken_links} breaking dependency link(s) on the graph.")
+    elif latest:
         insight_bits.append(f"Latest {latest.version} is {latest.status.value} with {latest.risk_level} risk.")
     insight_bits.append(
-        f"{open_prs} demo fix PR(s) waiting on a human."
+        f"{open_prs} fix PR(s) waiting on a human."
         if open_prs
-        else "No open fix PRs — scan a workspace to create assigned tickets from engine findings."
+        else "Scan a workspace on Readiness to open assigned tickets from engine findings."
     )
     insight = " ".join(insight_bits)
+    train = release_train_state(db, project)
+    gate = deploy_gate_details(db, project)
+    shop = shop_status_payload()
+    prod_risk_level = None
+    prod_risk_score = None
+    prod_factors: list[dict[str, Any]] = []
+    if project.production_release_id:
+        prod = db.get(Release, project.production_release_id)
+        if prod:
+            prod_risk_level = prod.risk_level
+            prod_risk_score = prod.risk_score
+            prod_factors = [
+                {"factor": f.factor, "weight": f.weight, "detail": f.detail}
+                for f in db.scalars(
+                    select(RiskFactor).where(RiskFactor.release_id == prod.id)
+                ).all()
+            ]
+    audit_rows = recent_project_audit(db, user.organization_id, project_id, limit=5)
     return DashboardOut(
         active_releases=active,
         recent_releases=[
-            {"id": r.id, "version": r.version, "status": r.status.value, "risk": r.risk_level}
+            {
+                "id": r.id,
+                "version": r.version,
+                "status": r.status.value,
+                "risk": r.risk_level,
+                "is_production": project.production_release_id == r.id,
+            }
             for r in recent
         ],
         deployment_status={k.value if hasattr(k, "value") else str(k): v for k, v in dep_counts.items()},
@@ -412,6 +590,19 @@ def dashboard(
         services_count=svc_count,
         open_fix_prs=open_prs,
         copilot_insight=insight,
+        workspace_path=workspace_label,
+        scan_issue_count=scan_issue_count,
+        scan_high_count=scan_high_count,
+        broken_links=broken_links,
+        production_version=train.get("production_version"),
+        production_release_id=train.get("production_release_id"),
+        draft_version=train.get("draft_version"),
+        production_risk_level=prod_risk_level,
+        production_risk_score=prod_risk_score,
+        production_risk_factors=prod_factors,
+        deploy_gate=DeployGateOut(**gate),
+        shop_status=ShopStatusOut(**shop),
+        recent_audit=audit_rows,
     )
 
 
@@ -421,39 +612,114 @@ def list_releases(
     db: Annotated[Session, Depends(get_db)],
     project_id: int = Query(...),
 ):
-    _project_for_user(db, user, project_id)
+    project = _project_for_user(db, user, project_id)
+    bootstrap_production_baseline(db, project, actor=user)
     releases = db.scalars(
         select(Release).where(Release.project_id == project_id).order_by(Release.created_at.desc())
     ).all()
-    out = []
-    for r in releases:
-        svcs = db.scalars(
-            select(Service.name)
-            .join(ReleaseService, ReleaseService.service_id == Service.id)
-            .where(ReleaseService.release_id == r.id)
-        ).all()
-        cc = db.scalar(
-            select(func.count(ReleaseCommit.id)).where(ReleaseCommit.release_id == r.id)
-        ) or 0
-        pc = db.scalar(
-            select(func.count(ReleasePullRequest.id)).where(ReleasePullRequest.release_id == r.id)
-        ) or 0
-        out.append(
-            ReleaseOut(
-                id=r.id,
-                version=r.version,
-                status=r.status.value,
-                risk_level=r.risk_level,
-                risk_score=r.risk_score,
-                summary=r.summary,
-                created_at=r.created_at,
-                rollback_available=r.rollback_available,
-                services=list(svcs),
-                commits_count=cc,
-                prs_count=pc,
-            )
+    return [_release_out(db, project, r) for r in releases]
+
+
+@router.get("/release-train", response_model=ReleaseTrainOut)
+def get_release_train(
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    project_id: int = Query(...),
+):
+    project = _project_for_user(db, user, project_id)
+    bootstrap_production_baseline(db, project, actor=user)
+    db.commit()
+    state = release_train_state(db, project)
+    return ReleaseTrainOut(**state)
+
+
+@router.post("/releases/next", response_model=ReleaseOut)
+def start_next_release(
+    body: CreateNextReleaseRequest,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    project_id: int = Query(...),
+):
+    project = _project_for_user(db, user, project_id)
+    try:
+        release = create_next_release(db, project, summary=body.summary, actor=user)
+    except ReleaseTrainError as exc:
+        raise _train_error(exc) from exc
+    log_audit(
+        db,
+        user.organization_id,
+        "release.create_next",
+        "release",
+        release.id,
+        user=user,
+        new_state={"version": release.version, "baseline_release_id": release.baseline_release_id},
+    )
+    db.commit()
+    db.refresh(release)
+    return _release_out(db, project, release)
+
+
+@router.post("/releases/{release_id}/mark-ready", response_model=ReleaseOut)
+def mark_ready(
+    release_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    r = db.get(Release, release_id)
+    if not r:
+        raise HTTPException(status_code=404, detail="Release not found")
+    project = _project_for_user(db, user, r.project_id)
+    try:
+        mark_release_ready(db, r, project)
+    except ReleaseTrainError as exc:
+        raise _train_error(exc) from exc
+    log_audit(
+        db,
+        user.organization_id,
+        "release.mark_ready",
+        "release",
+        r.id,
+        user=user,
+        new_state={"version": r.version, "status": r.status.value},
+    )
+    db.commit()
+    return _release_out(db, project, r)
+
+
+@router.post("/releases/{release_id}/deploy")
+def deploy_release_endpoint(
+    release_id: int,
+    body: DeployReleaseRequest,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    if not body.confirm:
+        raise HTTPException(status_code=400, detail="Confirmation required (confirm=true)")
+    r = db.get(Release, release_id)
+    if not r:
+        raise HTTPException(status_code=404, detail="Release not found")
+    project = _project_for_user(db, user, r.project_id)
+    try:
+        result = deploy_release(
+            db,
+            r,
+            project,
+            environment_slug=body.environment_slug,
+            actor=user,
         )
-    return out
+    except ReleaseTrainError as exc:
+        raise _train_error(exc) from exc
+    log_audit(
+        db,
+        user.organization_id,
+        "release.deploy",
+        "release",
+        r.id,
+        user=user,
+        new_state=result,
+    )
+    db.commit()
+    return result
 
 
 @router.get("/releases/{release_id}", response_model=ReleaseDetailOut)
@@ -465,7 +731,7 @@ def get_release(
     r = db.get(Release, release_id)
     if not r:
         raise HTTPException(status_code=404, detail="Release not found")
-    _project_for_user(db, user, r.project_id)
+    project = _project_for_user(db, user, r.project_id)
     commits = db.scalars(
         select(Commit)
         .join(ReleaseCommit, ReleaseCommit.commit_id == Commit.id)
@@ -493,19 +759,11 @@ def get_release(
         .join(ReleaseService, ReleaseService.service_id == Service.id)
         .where(ReleaseService.release_id == r.id)
     ).all()
+    base = _release_out(db, project, r)
     return ReleaseDetailOut(
-        id=r.id,
-        version=r.version,
-        status=r.status.value,
-        risk_level=r.risk_level,
-        risk_score=r.risk_score,
-        summary=r.summary,
-        created_at=r.created_at,
-        rollback_available=r.rollback_available,
-        services=list(svcs),
-        commits_count=len(commits),
-        prs_count=len(prs),
+        **base.model_dump(),
         commits=[{"sha": c.sha[:7], "message": c.message, "author": c.author} for c in commits],
+        commits_since_baseline=commits_since_baseline(db, r),
         pull_requests=[{"number": p.number, "title": p.title} for p in prs],
         builds=[{"id": b.id, "status": b.status, "duration_seconds": b.duration_seconds} for b in builds],
         tests=[{"suite": t.suite, "status": t.status, "passed": t.passed, "failed": t.failed} for t in tests],
@@ -514,6 +772,74 @@ def get_release(
         risk_factors=[{"factor": f.factor, "weight": f.weight, "detail": f.detail} for f in factors],
         environment=env_name,
     )
+
+
+@router.get("/releases/{release_id}/deploy-preview")
+def release_deploy_preview(
+    release_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    r = db.get(Release, release_id)
+    if not r:
+        raise HTTPException(status_code=404, detail="Release not found")
+    _project_for_user(db, user, r.project_id)
+    return deploy_blast_radius(db, r)
+
+
+@router.get("/shop-status", response_model=ShopStatusOut)
+def get_shop_status(user: Annotated[User, Depends(get_current_user)]):
+    return ShopStatusOut(**shop_status_payload())
+
+
+@router.post("/incidents/sync-shop")
+def sync_shop_incidents(
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    project_id: int = Query(...),
+):
+    _project_for_user(db, user, project_id)
+    _sync_shop_checkout_incidents(db, project_id, user)
+    return {"ok": True, **shop_status_payload()}
+
+
+@router.post("/fix-prs/{proposal_id}/rescan-verify")
+def rescan_verify_fix_pr(
+    proposal_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    p = _proposal_for_user(db, user, proposal_id)
+    project = _project_for_user(db, user, p.project_id)
+    check = verify_fix_ready(db, p)
+    p.verify_message = str(check.get("message") or "")
+    scan_summary = None
+    path = (project.workspace_path or "").strip()
+    if path:
+        try:
+            scan = scan_workspace(path)
+            apply_workspace_scan(db, project, scan, actor=user)
+            scan_summary = {
+                "issues": len(scan.get("issues") or []),
+                "workspace": scan.get("workspace") or path,
+            }
+        except OSError as exc:
+            scan_summary = {"error": str(exc)}
+    log_audit(
+        db,
+        user.organization_id,
+        "fix_pr.rescan_verify",
+        "fix_proposal",
+        p.id,
+        user=user,
+        new_state={"verified": bool(check.get("ok")), "scan": scan_summary},
+    )
+    db.commit()
+    db.refresh(p)
+    payload = serialize_proposal(db, p)
+    payload["verify"] = check.get("message")
+    payload["scan"] = scan_summary
+    return payload
 
 
 @router.get("/graph", response_model=GraphOut)
@@ -567,6 +893,7 @@ def list_incidents(
     project_id: int = Query(...),
 ):
     _project_for_user(db, user, project_id)
+    _sync_shop_checkout_incidents(db, project_id, user)
     rows = db.scalars(
         select(Incident).where(Incident.project_id == project_id).order_by(Incident.created_at.desc())
     ).all()
@@ -596,6 +923,7 @@ def get_incident(
     if not inc:
         raise HTTPException(status_code=404, detail="Incident not found")
     _project_for_user(db, user, inc.project_id)
+    _sync_shop_checkout_incidents(db, inc.project_id, user)
     return CopilotTools(db, inc.project_id).get_incidents(incident_id)
 
 
@@ -649,17 +977,11 @@ def rollback_release(
     r = db.get(Release, release_id)
     if not r:
         raise HTTPException(status_code=404, detail="Release not found")
-    _project_for_user(db, user, r.project_id)
-    if not r.rollback_available:
-        raise HTTPException(status_code=400, detail="Rollback not available for this release")
-    r.status = ReleaseStatus.ROLLED_BACK
-    dep = Deployment(
-        release_id=r.id,
-        environment_id=r.environment_id or 1,
-        status=DeploymentStatus.ROLLED_BACK,
-        initiated_by_user_id=user.id,
-    )
-    db.add(dep)
+    project = _project_for_user(db, user, r.project_id)
+    try:
+        result = rollback_to_baseline(db, r, project, actor=user)
+    except ReleaseTrainError as exc:
+        raise _train_error(exc) from exc
     log_audit(
         db,
         user.organization_id,
@@ -667,86 +989,125 @@ def rollback_release(
         "release",
         r.id,
         user=user,
-        previous_state={"status": "DEPLOYED"},
-        new_state={"status": "ROLLED_BACK"},
+        previous_state={"production": result["rolled_back_version"]},
+        new_state={"production": result["production_version"]},
     )
     db.commit()
-    return {"ok": True, "release_id": r.id, "status": r.status.value}
+    return {"ok": True, **result}
 
 
-@router.post("/simulator/deploy")
-def simulate_deploy(
-    body: SimulateDeployRequest,
-    user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[Session, Depends(get_db)],
+def _record_checkout_failure(
+    user: User,
+    db: Session,
+    project_id: int,
 ):
-    from releasegraph.simulator import run_simulated_deployment
-
-    r = db.get(Release, body.release_id)
-    if not r:
-        raise HTTPException(status_code=404, detail="Release not found")
-    _project_for_user(db, user, r.project_id)
-    result = run_simulated_deployment(db, r, body.environment_slug, user)
-    db.commit()
-    return result
-
-
-@router.post("/simulator/payment-failure")
-def trigger_payment_failure(
-    user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[Session, Depends(get_db)],
-    project_id: int = Query(...),
-    service_name: str | None = Query(None),
-):
-    """Demo: create an incident for a real service in this project (not a hardcoded name)."""
+    """Turn payment failure on, place one order, and store the gateway response."""
     _project_for_user(db, user, project_id)
-    svc = None
-    if service_name:
-        svc = db.scalar(
-            select(Service).where(Service.project_id == project_id, Service.name == service_name)
-        )
-    if svc is None:
-        high = db.scalars(
-            select(Service)
-            .where(Service.project_id == project_id, Service.criticality == "high")
-            .order_by(Service.name)
-        ).first()
-        svc = high or db.scalars(select(Service).where(Service.project_id == project_id).order_by(Service.name)).first()
+    project = db.get(Project, project_id)
+    svc = checkout_target_service(db, project_id)
     if not svc:
-        raise HTTPException(status_code=404, detail="No services in this project. Scan a workspace first.")
-    latest_release = db.scalars(
-        select(Release).where(Release.project_id == project_id).order_by(Release.created_at.desc()).limit(1)
-    ).first()
+        raise HTTPException(
+            status_code=404,
+            detail="No services in this project. Scan a workspace first.",
+        )
+    checkout_title = checkout_incident_title(svc.name)
+    try:
+        probe = run_checkout_failure(settings.shop_gateway_url, service_name=svc.name)
+    except ShopUnavailable as exc:
+        raise HTTPException(status_code=424, detail=str(exc)) from exc
+    except CheckoutDidNotFail as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    existing = db.scalar(
+        select(Incident)
+        .where(
+            Incident.project_id == project_id,
+            Incident.service_id == svc.id,
+            Incident.title == checkout_title,
+            Incident.status.in_([IncidentStatus.OPEN, IncidentStatus.INVESTIGATING]),
+        )
+        .order_by(Incident.created_at.desc())
+    )
+    if existing:
+        for event_type, message in probe.steps:
+            db.add(
+                IncidentEvent(
+                    incident_id=existing.id,
+                    event_type=event_type,
+                    message=message,
+                    actor=user.email,
+                )
+            )
+        log_audit(
+            db,
+            user.organization_id,
+            "incident.checkout_failure",
+            "incident",
+            existing.id,
+            user=user,
+            new_state={"http_status": probe.http_status, "detail": probe.detail, "reused": True},
+        )
+        db.commit()
+        return {
+            "incident_id": existing.id,
+            "service": svc.name,
+            "reused": True,
+            "http_status": probe.http_status,
+            "message": (
+                f"Checkout failed again (HTTP {probe.http_status}: {probe.detail}). "
+                "Added the shop response to the open incident. Payment failure mode is still on."
+            ),
+        }
+
+    production = get_production_release(db, project)
     inc = Incident(
         project_id=project_id,
-        title=f"Simulated {svc.name} failure",
+        title=checkout_title,
         status=IncidentStatus.OPEN,
         severity="critical",
         service_id=svc.id,
-        release_id=latest_release.id if latest_release else None,
+        release_id=production.id if production else None,
     )
     db.add(inc)
     db.flush()
-    db.add(
-        IncidentEvent(
-            incident_id=inc.id,
-            event_type="simulation",
-            message=f"Demo failure mode recorded for {svc.name}",
-            actor=user.email,
+    for event_type, message in probe.steps:
+        db.add(
+            IncidentEvent(
+                incident_id=inc.id,
+                event_type=event_type,
+                message=message,
+                actor=user.email,
+            )
         )
+    log_audit(
+        db,
+        user.organization_id,
+        "incident.checkout_failure",
+        "incident",
+        inc.id,
+        user=user,
+        new_state={"http_status": probe.http_status, "detail": probe.detail},
     )
-    log_audit(db, user.organization_id, "simulation.service_failure", "incident", inc.id, user=user)
     db.commit()
-    return {"incident_id": inc.id, "service": svc.name, "message": f"Failure scenario recorded for {svc.name} (demo)"}
+    return {
+        "incident_id": inc.id,
+        "service": svc.name,
+        "reused": False,
+        "http_status": probe.http_status,
+        "message": (
+            f"Checkout failed (HTTP {probe.http_status}: {probe.detail}). "
+            "Opened an incident from the live shop response. Payment failure mode is still on."
+        ),
+    }
 
 
-@router.get("/readiness/presets", response_model=list[ReadinessPresetOut])
-def readiness_presets(user: Annotated[User, Depends(get_current_user)]):
-    """Demo presets and paths for the rgc engine (repo workspace + org YAML)."""
-    return [
-        ReadinessPresetOut(id=k, label=v["label"], kind=v["kind"])
-        for k, v in PRESETS.items()
-    ]
+@router.post("/incidents/checkout-failure")
+def open_checkout_failure(
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    project_id: int = Query(...),
+):
+    return _record_checkout_failure(user, db, project_id)
 
 
 @router.post("/readiness/check", response_model=ReadinessCheckResponse)
@@ -755,56 +1116,40 @@ def readiness_check(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    """Scan a workspace and/or run the rgc GO/NO-GO engine when org YAML is present."""
-    result = None
-    scan = None
-    workspace = body.workspace
-    if body.preset:
-        spec = PRESETS.get(body.preset)
-        if not spec:
-            raise HTTPException(status_code=400, detail="Unknown preset")
-        workspace = spec.get("workspace") or workspace
-        if spec["kind"] == "manifest":
-            result = run_manifest_check(spec["release_file"])
-        else:
-            result = run_workspace_check(
-                spec["workspace"],
-                spec["config"],
-                spec["repos"],
-                ci_dir=spec.get("ci_dir"),
-                changed_paths=spec.get("changed_paths"),
-            )
-    elif body.release_file:
-        result = run_manifest_check(body.release_file)
-    elif body.workspace:
-        root = Path(body.workspace).expanduser()
-        cfg = body.config
-        if not cfg:
-            for cand in (root / "org.yaml", root / "fixtures" / "org.yaml"):
-                if cand.is_file():
-                    cfg = str(cand)
-                    break
-        repos = body.repos
-        if cfg:
-            result = run_workspace_check(
-                body.workspace,
-                cfg,
-                repos or [],
-                ci_dir=body.ci_dir,
-                changed_paths=body.changed_paths,
-            )
-        scan = scan_workspace(body.workspace)
-    else:
+    """Scan the workspace on disk and run rgc when org.yaml is present under that path."""
+    if body.preset or body.release_file:
         raise HTTPException(
             status_code=400,
-            detail="Provide preset, release_file, or workspace path",
+            detail="Presets and fixture manifests are disabled. Provide workspace with your repo path.",
         )
+    if not body.workspace:
+        raise HTTPException(status_code=400, detail="workspace path is required")
 
-    if workspace and scan is None:
-        try:
-            scan = scan_workspace(workspace)
-        except OSError:
-            scan = None
+    workspace = body.workspace
+    root = Path(body.workspace).expanduser()
+    if not root.is_dir():
+        raise HTTPException(status_code=400, detail=f"Workspace not found: {body.workspace}")
+
+    result = None
+    cfg = body.config
+    if not cfg:
+        for cand in (root / "org.yaml", root / "fixtures" / "org.yaml"):
+            if cand.is_file():
+                cfg = str(cand)
+                break
+    repos = body.repos
+    if cfg:
+        result = run_workspace_check(
+            body.workspace,
+            cfg,
+            repos or [],
+            ci_dir=body.ci_dir,
+            changed_paths=body.changed_paths,
+        )
+    try:
+        scan = scan_workspace(body.workspace)
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     if result is None:
         issues = (scan or {}).get("issues") or []
@@ -822,25 +1167,28 @@ def readiness_check(
         checklist_dict = result.to_dict() if isinstance(result, RgcChecklist) else result
 
     analysis = None
-    if body.persist and body.project_id:
+    project: Project | None = None
+    if body.project_id:
         project = _project_for_user(db, user, body.project_id)
+    elif body.persist and workspace:
+        project = _project_from_workspace(db, user, workspace, None)
+
+    if project and cfg:
+        project.org_config_path = cfg
+    elif project and not (project.org_config_path or "").strip():
+        for cand in (root / "org.yaml", root / "fixtures" / "org.yaml"):
+            if cand.is_file():
+                project.org_config_path = str(cand.resolve())
+                break
+
+    if body.persist and project and scan:
         ws = workspace or body.workspace or (project.workspace_path or None)
-        if scan and ws:
-            persist_scan(db, project, scan)
+        if ws:
+            apply_workspace_scan(db, project, scan, actor=user)
         analysis = analyze_project(
             db,
             project.id,
             workspace=ws or None,
-            checklist=checklist_dict,
-        )
-    elif body.persist and workspace:
-        project = _project_from_workspace(db, user, workspace, None)
-        if scan:
-            persist_scan(db, project, scan)
-        analysis = analyze_project(
-            db,
-            project.id,
-            workspace=workspace,
             checklist=checklist_dict,
         )
 
@@ -851,14 +1199,24 @@ def readiness_check(
         "rgc_checklist",
         checklist_dict.get("release_id", "unknown"),
         user=user,
-        new_state={"verdict": checklist_dict.get("verdict"), "preset": body.preset},
+        new_state={"verdict": checklist_dict.get("verdict"), "workspace": workspace},
     )
     db.commit()
+    gate_out = None
+    train_out = None
+    org_path = cfg
+    if project:
+        gate_out = DeployGateOut(**deploy_gate_details(db, project))
+        train_out = ReleaseTrainOut(**release_train_state(db, project))
+        org_path = project.org_config_path or cfg
     return ReadinessCheckResponse(
         checklist=checklist_dict,
-        ready_to_release=checklist_dict.get("verdict") == "go",
+        ready_to_release=checklist_dict.get("verdict") == "go" and not (gate_out and gate_out.blocked),
         analysis=analysis,
         scan=scan,
+        deploy_gate=gate_out,
+        release_train=train_out,
+        org_config_path=org_path,
     )
 
 

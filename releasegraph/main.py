@@ -15,7 +15,7 @@ from releasegraph.api import router
 from releasegraph.config import settings
 from releasegraph.database import init_db
 from releasegraph.errors import http_exception_handler, validation_exception_handler
-from releasegraph.seed import ensure_demo_staff
+from releasegraph.seed import ensure_bootstrap_projects, ensure_demo_staff
 
 
 class RequestIdFilter(logging.Filter):
@@ -38,6 +38,7 @@ for _handler in logging.getLogger().handlers:
 async def lifespan(app: FastAPI):
     init_db()
     ensure_demo_staff()
+    ensure_bootstrap_projects()
     yield
 
 

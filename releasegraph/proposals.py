@@ -1,4 +1,4 @@
-"""In-app demo fix PRs — assigned to employees, human-approved, not GitHub/Jira."""
+"""In-app fix tickets from workspace scan — assigned to employees, human-approved."""
 from __future__ import annotations
 
 import json
@@ -76,8 +76,8 @@ def upsert_from_issues(
         if llm_fix:
             body += f"\n### Groq wording (not verified as a new finding)\n{llm_fix}\n"
         body += (
-            "\n---\nThis is an in-app demo PR. It is not a GitHub or Jira ticket. "
-            "A human must approve before it can be marked merged. The app does not write to git."
+            "\n---\nIn-app review ticket (not GitHub/Jira). "
+            "A human must approve before close; close re-scans the workspace. The app does not write to git."
         )
         title = f"Fix {code} in {file_path}"
         if len(title) > 180:
@@ -144,8 +144,9 @@ def serialize_proposal(db: Session, p: FixProposal) -> dict[str, Any]:
         "confidence": p.confidence,
         "llm_accepted": p.llm_accepted,
         "human_required": p.human_required,
-        "demo": True,
+        "in_app": True,
         "external": False,
         "created_at": p.created_at.isoformat() if p.created_at else None,
         "merged_at": p.merged_at.isoformat() if p.merged_at else None,
+        "verify_message": (p.verify_message or "").strip() or None,
     }

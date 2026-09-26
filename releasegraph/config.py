@@ -45,10 +45,13 @@ class Settings:
         "http://127.0.0.1:8000",
     )
     demo_services_url: str = "http://localhost:8081"
+    shop_gateway_url: str = "http://127.0.0.1:8080"
+    shop_storefront_url: str = "http://127.0.0.1:8082"
     request_id_header: str = "X-Request-Id"
     groq_api_key: str = ""
     groq_base_url: str = "https://api.groq.com/openai/v1"
     groq_model: str = "openai/gpt-oss-20b"
+    default_workspace: str = ""
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -74,9 +77,12 @@ class Settings:
             access_token_expire_minutes=int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", str(60 * 24))),
             cors_origins=tuple(o.strip() for o in origins.split(",") if o.strip()),
             demo_services_url=os.getenv("DEMO_SERVICES_URL", "http://localhost:8081"),
+            shop_gateway_url=os.getenv("SHOP_GATEWAY_URL", "http://127.0.0.1:8080"),
+            shop_storefront_url=os.getenv("SHOP_STOREFRONT_URL", "http://127.0.0.1:8082"),
             groq_api_key=groq_key,
             groq_base_url=groq_base.rstrip("/"),
             groq_model=model,
+            default_workspace=os.getenv("RELEASEGRAPH_WORKSPACE", "").strip(),
         )
 
 

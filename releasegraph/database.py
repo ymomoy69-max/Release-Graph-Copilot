@@ -30,17 +30,25 @@ def _ensure_sqlite_columns() -> None:
     if not settings.database_url.startswith("sqlite"):
         return
     insp = inspect(engine)
-    wanted = {
-        "projects": ("workspace_path", "VARCHAR(1024) DEFAULT ''"),
-        "services": ("source_path", "VARCHAR(1024) DEFAULT ''"),
+    wanted: dict[str, list[tuple[str, str]]] = {
+        "projects": [
+            ("workspace_path", "VARCHAR(1024) DEFAULT ''"),
+            ("org_config_path", "VARCHAR(1024) DEFAULT ''"),
+            ("readiness_presets_json", "TEXT DEFAULT '[]'"),
+            ("production_release_id", "INTEGER"),
+        ],
+        "fix_proposals": [("verify_message", "TEXT DEFAULT ''")],
+        "services": [("source_path", "VARCHAR(1024) DEFAULT ''")],
+        "releases": [("baseline_release_id", "INTEGER")],
     }
     with engine.begin() as conn:
-        for table, (col, ddl) in wanted.items():
+        for table, columns in wanted.items():
             if table not in insp.get_table_names():
                 continue
             cols = {c["name"] for c in insp.get_columns(table)}
-            if col not in cols:
-                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
+            for col, ddl in columns:
+                if col not in cols:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
 
 
 def init_db() -> None:

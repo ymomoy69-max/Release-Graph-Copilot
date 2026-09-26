@@ -1,17 +1,47 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
+import DeployGateBanner from "../components/DeployGateBanner";
+import { notifyGraphRefresh } from "../graphRefresh";
 
 export default function Dashboard({ project }: { project: { id: number; name: string; workspace_path?: string } }) {
   const [data, setData] = useState<Awaited<ReturnType<typeof api.dashboard>> | null>(null);
   const [err, setErr] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(() => {
+    setRefreshing(true);
+    return api
+      .dashboard(project.id)
+      .then(setData)
+      .catch((e) => setErr(e.message))
+      .finally(() => setRefreshing(false));
+  }, [project.id]);
 
   useEffect(() => {
     setData(null);
-    api.dashboard(project.id).then(setData).catch((e) => setErr(e.message));
-  }, [project.id]);
+    void load();
+  }, [load]);
 
-  if (err) return <p className="error">{err}</p>;
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load();
+    }, 20_000);
+    const onFocus = () => void load();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [load]);
+
+  useEffect(() => {
+    const handler = () => void load();
+    window.addEventListener("rg:graph-refresh", handler);
+    return () => window.removeEventListener("rg:graph-refresh", handler);
+  }, [load]);
+
+  if (err && !data) return <p className="error">{err}</p>;
   if (!data) {
     return (
       <>
@@ -34,9 +64,21 @@ export default function Dashboard({ project }: { project: { id: number; name: st
           <h2>Home</h2>
           <p className="muted">
             Live snapshot of <strong>{project.name}</strong>
-            {project.workspace_path ? ` · ${project.workspace_path}` : ""}. Counts come from the database.
+            {data.workspace_path ? ` · scanning ${data.workspace_path}` : project.workspace_path ? ` · ${project.workspace_path}` : ""}.
+            {refreshing ? " Refreshing…" : ""}
           </p>
         </div>
+        <button
+          type="button"
+          className="secondary"
+          disabled={refreshing}
+          onClick={() => {
+            notifyGraphRefresh({ projectId: project.id, reason: "dashboard" });
+            void load();
+          }}
+        >
+          Refresh
+        </button>
       </div>
 
       <div className="guide">
@@ -45,37 +87,92 @@ export default function Dashboard({ project }: { project: { id: number; name: st
           <div className="step">
             <div className="n">1 · SCAN</div>
             <p className="muted" style={{ margin: 0 }}>
-              Point Readiness at any workspace of connected microservices. The graph and analysis update from disk.
+              Point Readiness at any workspace folder. Services, graph, incidents, and Fix PRs come from disk.
             </p>
           </div>
           <div className="step">
             <div className="n">2 · GRAPH</div>
             <p className="muted" style={{ margin: 0 }}>
-              Who depends on whom. Red arrows are the link that breaks. The four cards under the map say what would change.
+              Who depends on whom. Red arrows are breaking links from the latest scan.
             </p>
           </div>
           <div className="step">
             <div className="n">3 · INCIDENTS</div>
             <p className="muted" style={{ margin: 0 }}>
-              Production problems. Open a timeline, then ask Copilot — it names files, impact, and fixes.
+              Scanner findings and live checkout failures — not canned stories.
             </p>
           </div>
           <div className="step">
             <div className="n">4 · FIX PRs</div>
             <p className="muted" style={{ margin: 0 }}>
-              Engine findings become assigned demo tickets. A person approves; merge is a status only — no GitHub or Jira.
+              Engine findings assigned for human review. Close only after the scanner is clean.
             </p>
           </div>
           <div className="step">
             <div className="n">5 · RELEASES</div>
             <p className="muted" style={{ margin: 0 }}>
-              {latest
-                ? `Latest version on record: ${latest.version} (${latest.status}, ${latest.risk} risk).`
-                : "No release rows yet — they appear when you seed or simulate a deploy."}
+              {data.production_version
+                ? `Production: ${data.production_version}${data.draft_version ? ` · next: ${data.draft_version}` : ""}.`
+                : latest
+                  ? `Latest on record: ${latest.version} (${latest.status}).`
+                  : "Scan a workspace, then open Releases to start the train."}
             </p>
           </div>
         </div>
       </div>
+
+      {data.shop_status && (
+        <div className="ops-strip card">
+          <span>
+            Scan: <strong>{data.scan_issue_count ?? 0}</strong> issue(s)
+          </span>
+          <span>
+            Incidents: <strong>{data.open_incidents}</strong> open
+          </span>
+          <span>
+            Fix PRs: <strong>{data.open_fix_prs ?? 0}</strong> open
+          </span>
+          <span>
+            Shop payments:{" "}
+            <strong>
+              {data.shop_status.payment_status === "ok"
+                ? "healthy"
+                : data.shop_status.payment_status === "failure_on"
+                  ? "failure mode ON"
+                  : "unknown (shop down?)"}
+            </strong>
+          </span>
+        </div>
+      )}
+
+      {data.production_risk_level && (
+        <div className="card">
+          <h3 style={{ marginTop: 0 }}>
+            Production risk:{" "}
+            <span className={`badge ${data.production_risk_level.toLowerCase()}`}>
+              {data.production_risk_level}
+            </span>
+            {data.production_risk_score != null ? ` (score ${data.production_risk_score})` : ""}
+          </h3>
+          <p className="muted" style={{ marginTop: 0 }}>
+            Rescored from the live workspace scan on each Home refresh — not a static label.
+          </p>
+          {(data.production_risk_factors || []).length > 0 && (
+            <ul style={{ margin: "0.5rem 0 0", paddingLeft: "1.2rem" }}>
+              {data.production_risk_factors.map((f) => (
+                <li key={f.factor}>
+                  <strong>{f.factor}</strong> ({f.weight > 0 ? "+" : ""}{f.weight}): {f.detail}
+                </li>
+              ))}
+            </ul>
+          )}
+          {data.production_release_id && (
+            <p style={{ marginBottom: 0 }}>
+              <Link to={`/releases/${data.production_release_id}`}>Open production release</Link>
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="grid">
         <Link to="/releases" className="card stat" style={{ color: "inherit", textDecoration: "none" }}>
@@ -86,12 +183,14 @@ export default function Dashboard({ project }: { project: { id: number; name: st
         <Link to="/incidents" className="card stat" style={{ color: "inherit", textDecoration: "none" }}>
           <div className="label">Open incidents</div>
           <div className="value">{data.open_incidents}</div>
-          <div className="hint">Problems still not resolved</div>
+          <div className="hint">From scan + live checkout</div>
         </Link>
         <div className="card stat">
-          <div className="label">Failed builds</div>
-          <div className="value">{data.failed_builds}</div>
-          <div className="hint">CI failures on record</div>
+          <div className="label">Scanner issues (live)</div>
+          <div className="value">{data.scan_issue_count ?? 0}</div>
+          <div className="hint">
+            {(data.scan_high_count ?? 0) > 0 ? `${data.scan_high_count} high severity` : "On disk now"}
+          </div>
         </div>
         <Link to="/fix-prs" className="card stat" style={{ color: "inherit", textDecoration: "none" }}>
           <div className="label">Open fix PRs</div>
@@ -99,19 +198,43 @@ export default function Dashboard({ project }: { project: { id: number; name: st
           <div className="hint">Assigned tickets waiting on a human</div>
         </Link>
         <Link to="/graph" className="card stat" style={{ color: "inherit", textDecoration: "none" }}>
-          <div className="label">Services</div>
-          <div className="value">{data.services_count}</div>
-          <div className="hint">Boxes on the dependency graph</div>
+          <div className="label">Breaking links</div>
+          <div className="value">{data.broken_links ?? 0}</div>
+          <div className="hint">{data.services_count} services mapped</div>
         </Link>
       </div>
+      <DeployGateBanner gate={data.deploy_gate} />
+
       <div className="card">
-        <h3>Latest note from the data</h3>
+        <h3>Latest from the workspace</h3>
         <p style={{ margin: "0.4rem 0 0" }}>{data.copilot_insight}</p>
         <p className="muted" style={{ marginTop: 8 }}>
-          Scan a workspace on <Link to="/readiness">Readiness</Link>, review assigned tickets on{" "}
+          Scan on <Link to="/readiness">Readiness</Link>, review tickets on{" "}
           <Link to="/fix-prs">Fix PRs</Link>, or ask <Link to="/copilot">Copilot</Link> what is wrong.
         </p>
       </div>
+      {(data.recent_audit || []).length > 0 && (
+        <div className="card">
+          <h3>Recent activity</h3>
+          <ul className="timeline" style={{ margin: 0 }}>
+            {data.recent_audit!.map((e) => (
+              <li key={e.id}>
+                <div className="muted">{new Date(e.timestamp).toLocaleString()}</div>
+                <strong>{e.action}</strong>
+                <span className="muted">
+                  {" "}
+                  · {e.entity_type} #{e.entity_id}
+                  {e.user_email ? ` · ${e.user_email}` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p style={{ marginBottom: 0 }}>
+            <Link to="/audit">Full audit log</Link>
+          </p>
+        </div>
+      )}
+
       <div className="card">
         <h3>Recent releases</h3>
         {data.recent_releases.length === 0 ? (
@@ -119,7 +242,13 @@ export default function Dashboard({ project }: { project: { id: number; name: st
         ) : (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Version</th><th>Shipped?</th><th>How risky</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>Version</th>
+                  <th>Status</th>
+                  <th>Risk</th>
+                </tr>
+              </thead>
               <tbody>
                 {data.recent_releases.map((r) => (
                   <tr key={r.id}>

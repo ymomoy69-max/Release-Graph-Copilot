@@ -1,10 +1,15 @@
 import { useEffect, useState } from "react";
 import { api, type FixPr } from "../api";
+import { notifyGraphRefresh } from "../graphRefresh";
+
+const OPEN = new Set(["OPEN", "NEEDS_HUMAN", "APPROVED"]);
 
 export default function FixPRsPage({ projectId }: { projectId: number }) {
   const [rows, setRows] = useState<FixPr[] | null>(null);
   const [users, setUsers] = useState<{ id: number; email: string; full_name: string; role: string }[]>([]);
   const [error, setError] = useState("");
+  const [note, setNote] = useState("");
+  const [showClosed, setShowClosed] = useState(false);
   const [busy, setBusy] = useState<number | null>(null);
   const [confirm, setConfirm] = useState<{ id: number; kind: "approve" | "reject" | "merge" } | null>(null);
 
@@ -31,14 +36,43 @@ export default function FixPRsPage({ projectId }: { projectId: number }) {
     }
     setBusy(id);
     setError("");
+    setNote("");
     try {
-      if (kind === "approve") await api.approveFixPr(id);
-      if (kind === "reject") await api.rejectFixPr(id);
-      if (kind === "merge") await api.mergeFixPr(id);
+      if (kind === "approve") {
+        await api.approveFixPr(id);
+        setNote("Approved. A second person can close it after the scanner no longer finds this line.");
+      }
+      if (kind === "reject") {
+        await api.rejectFixPr(id);
+        setNote("Rejected. Ticket moved to closed.");
+      }
+      if (kind === "merge") {
+        const closed = await api.mergeFixPr(id);
+        setNote(closed.verify || "Engine is clean. Ticket left the open board.");
+      }
       setConfirm(null);
       load();
+      notifyGraphRefresh({ projectId, reason: kind });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Action failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function rescanVerify(id: number) {
+    setBusy(id);
+    setError("");
+    setNote("");
+    try {
+      const res = await api.rescanVerifyFixPr(id);
+      setNote(
+        res.verify || res.verify_message || `Re-scanned workspace (${res.scan?.issues ?? "?"} issues on disk).`,
+      );
+      load();
+      notifyGraphRefresh({ projectId, reason: "fix_pr_rescan" });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Re-scan failed");
     } finally {
       setBusy(null);
     }
@@ -63,8 +97,9 @@ export default function FixPRsPage({ projectId }: { projectId: number }) {
         <div>
           <h2>Fix PRs</h2>
           <p className="muted">
-            In-app demo tickets assigned to employees. This is not GitHub and not Jira — it shows how a
-            human verifies engine findings before anything is marked merged. The app does not write to git.
+            Human review board for scanner findings. This is not GitHub. Approve means a person agrees
+            the finding is real. Close re-runs the engine: the ticket leaves this list only if that
+            line is actually gone. The app does not write to git.
           </p>
         </div>
       </div>
@@ -77,16 +112,21 @@ export default function FixPRsPage({ projectId }: { projectId: number }) {
             Groq may only rephrase that finding.
           </li>
           <li>
-            Each PR is assigned to an engineer. A person must <strong>approve</strong>, then a release
-            manager or admin marks <strong>merged</strong> (demo status only).
+            <strong>Approve</strong> is a human “this is a real bug.” It does not change code.
           </li>
           <li>
-            Click an action twice to confirm. The LLM cannot approve or merge.
+            <strong>Re-scan and close</strong> runs the workspace scanner again. If the finding is
+            still in the file, the ticket stays. If it is gone, the ticket drops off the open board.
+          </li>
+          <li>
+            Click an action twice to confirm. The LLM cannot approve or close. A second person (or
+            admin) must close after approve.
           </li>
         </ul>
       </div>
 
       {error && <p className="error">{error}</p>}
+      {note && <p className="ok">{note}</p>}
 
       {!rows ? (
         <div className="card">
@@ -97,7 +137,25 @@ export default function FixPRsPage({ projectId }: { projectId: number }) {
           No fix PRs yet. Scan a workspace on Readiness — open issues become assigned tickets here.
         </div>
       ) : (
-        rows.map((pr) => (
+        <>
+        {rows.some((pr) => !OPEN.has(pr.status)) && (
+          <label className="muted" style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
+            <input
+              type="checkbox"
+              checked={showClosed}
+              onChange={(e) => setShowClosed(e.target.checked)}
+            />
+            Show closed tickets ({rows.filter((pr) => !OPEN.has(pr.status)).length})
+          </label>
+        )}
+        {rows.filter((pr) => showClosed || OPEN.has(pr.status)).length === 0 ? (
+          <div className="empty">
+            {showClosed
+              ? "No tickets in this project."
+              : "Open board is empty. Closed tickets are hidden — tick “Show closed” if you need history, or scan on Readiness to open new ones."}
+          </div>
+        ) : (
+        rows.filter((pr) => showClosed || OPEN.has(pr.status)).map((pr) => (
           <article key={pr.id} className={`card issue-card ${pr.severity}`}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
               <strong>
@@ -119,7 +177,7 @@ export default function FixPRsPage({ projectId }: { projectId: number }) {
                 <span className="badge neutral">No LLM rewrite</span>
               )}
               {pr.human_required && <span className="badge warning">Needs human</span>}
-              <span className="badge neutral">Demo · not GitHub</span>
+              <span className="badge neutral">In-app review</span>
             </div>
             <p style={{ margin: "0.7rem 0 0" }}>
               <strong>Assigned to</strong>{" "}
@@ -151,7 +209,22 @@ export default function FixPRsPage({ projectId }: { projectId: number }) {
               </p>
             )}
             {pr.evidence && <pre className="snippet" style={{ marginTop: 10 }}>{pr.evidence}</pre>}
+            {(pr.verify_message || pr.verify) && (
+              <p className="muted" style={{ margin: "0.5rem 0 0" }}>
+                <strong>Last verify.</strong> {pr.verify_message || pr.verify}
+              </p>
+            )}
             <div className="chip-row" style={{ marginTop: 12 }}>
+              {pr.status !== "MERGED" && pr.status !== "REJECTED" && (
+                <button
+                  type="button"
+                  className="ghost"
+                  disabled={busy === pr.id}
+                  onClick={() => rescanVerify(pr.id)}
+                >
+                  Re-scan workspace
+                </button>
+              )}
               {pr.status !== "MERGED" && pr.status !== "REJECTED" && pr.status !== "APPROVED" && (
                 <button
                   type="button"
@@ -167,8 +240,8 @@ export default function FixPRsPage({ projectId }: { projectId: number }) {
               {pr.status === "APPROVED" && (
                 <button type="button" disabled={busy === pr.id} onClick={() => act(pr.id, "merge")}>
                   {confirm?.id === pr.id && confirm.kind === "merge"
-                    ? "Click again to mark merged (demo)"
-                    : "Mark merged (demo)"}
+                    ? "Click again — engine re-scans; ticket leaves only if the finding is gone"
+                    : "Re-scan and close"}
                 </button>
               )}
               {pr.status !== "MERGED" && pr.status !== "REJECTED" && (
@@ -186,6 +259,8 @@ export default function FixPRsPage({ projectId }: { projectId: number }) {
             </div>
           </article>
         ))
+        )}
+        </>
       )}
     </>
   );

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
-import { api } from "./api";
+import { api, type Project } from "./api";
 import { useAuth } from "./auth";
 import Dashboard from "./pages/Dashboard";
 import Releases from "./pages/Releases";
@@ -13,8 +13,6 @@ import ReadinessPage from "./pages/ReadinessPage";
 import Login from "./pages/Login";
 import { IconAlert, IconChat, IconDash, IconGraph, IconLog, IconPr, IconReleases, IconShield } from "./icons";
 import FixPRsPage from "./pages/FixPRs";
-
-type Project = { id: number; slug: string; name: string; description: string; workspace_path?: string };
 
 function Shell({
   project,

@@ -39,9 +39,9 @@ cd web && npm run build
 Demo microservices (7 separate processes):
 
 ```bash
-.venv/bin/python demo/ecommerce/run_all.py
-# or: .venv/bin/demo-ecommerce
-# Storefront: http://127.0.0.1:8082  |  Gateway: http://127.0.0.1:8080/health
+./scripts/dev-all.sh
+# Platform UI :5173, API :8000, shop :8082, gateway :8080/health
+# Or separately: ./scripts/dev-platform.sh and python demo/ecommerce/run_all.py
 ```
 
 Docker: `docker compose -f docker-compose.demo.yml up --build`

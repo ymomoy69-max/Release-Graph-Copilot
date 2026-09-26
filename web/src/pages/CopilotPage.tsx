@@ -2,12 +2,26 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 
+const PLAYBOOKS = [
+  {
+    q: "Is it safe to deploy to production right now?",
+    why: "Uses release train, deploy gate, workspace scan, and open incidents.",
+  },
+  {
+    q: "What breaks if payment-service fails?",
+    why: "Blast radius on the live dependency graph plus open incidents.",
+  },
+  {
+    q: "What scanner issues block deploy?",
+    why: "Reads blocking findings and linked incidents from the workspace.",
+  },
+];
+
 const SUGGESTIONS = [
-  { q: "What is wrong, which file, and what is the fix?", why: "Engine findings first; Groq may rephrase. Opens assigned Fix PRs." },
-  { q: "Which fix PRs are assigned to employees?", why: "Lists in-app demo PRs (not GitHub or Jira)." },
+  ...PLAYBOOKS,
+  { q: "What is wrong, which file, and what is the fix?", why: "Engine findings first; Groq may rephrase." },
+  { q: "Which fix PRs are assigned to employees?", why: "Lists in-app review tickets from the scanner." },
   { q: "What changed in the latest release?", why: "Lists stored commits and services for the newest release." },
-  { q: "What could be affected by this release?", why: "Follows the live dependency graph." },
-  { q: "Why is this release risky?", why: "Reads the stored risk score." },
   { q: "Investigate this incident", why: "Reads the incident timeline plus blast radius." },
 ];
 
@@ -61,12 +75,26 @@ export default function CopilotPage({ projectId }: { projectId: number }) {
         <ol>
           <li>Scan a workspace on <Link to="/readiness">Readiness</Link>.</li>
           <li>Ask what is wrong — file, blast radius, and engine fix. Groq only rephrases.</li>
-          <li>Open <Link to="/fix-prs">Fix PRs</Link> to assign and approve the demo tickets.</li>
+          <li>Open <Link to="/fix-prs">Fix PRs</Link> to assign and approve scanner tickets.</li>
           <li>Open <Link to="/incidents">Incidents</Link> and use “Ask Copilot about this ticket”.</li>
         </ol>
       </div>
       <div className="card">
-        <h3>Pick a question, then press Ask</h3>
+        <h3>Playbooks (tool-backed)</h3>
+        <div className="chip-row" style={{ marginTop: 8, marginBottom: 12 }}>
+          {PLAYBOOKS.map((s) => (
+            <button
+              key={s.q}
+              type="button"
+              className={`chip ${question === s.q ? "active" : ""}`}
+              onClick={() => setQuestion(s.q)}
+              title={s.why}
+            >
+              {s.q}
+            </button>
+          ))}
+        </div>
+        <h3>More questions</h3>
         <div className="chip-row" style={{ marginTop: 10 }}>
           {SUGGESTIONS.map((s) => (
             <button

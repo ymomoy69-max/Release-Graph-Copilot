@@ -15,17 +15,26 @@ from releasegraph.models import (
     Release,
     ReleaseCommit,
     ReleaseService,
+    ReleaseStatus,
     Repository,
     Service,
     ServiceDependency,
 )
+from releasegraph.deploy_gate import open_scan_incidents_by_service
 from releasegraph.workspace_scan import scan_workspace
 
 
 def _updates(db: Session, project_id: int) -> list[dict[str, Any]]:
-    release = db.scalars(
-        select(Release).where(Release.project_id == project_id).order_by(Release.created_at.desc())
-    ).first()
+    project = db.get(Project, project_id)
+    release = None
+    if project and project.production_release_id:
+        release = db.get(Release, project.production_release_id)
+    if release is None:
+        release = db.scalars(
+            select(Release)
+            .where(Release.project_id == project_id, Release.status == ReleaseStatus.DEPLOYED)
+            .order_by(Release.created_at.desc())
+        ).first()
     if not release:
         return []
     svc_names = db.scalars(
@@ -96,8 +105,15 @@ def build_project_graph(db: Session, project_id: int) -> dict[str, Any]:
     ]
     issues: list[dict[str, Any]] = []
     workspace = (project.workspace_path if project else "") or ""
+    scan: dict[str, Any] = {}
     if workspace:
         scan = scan_workspace(workspace)
+        if not dependencies and (scan.get("dependencies") or []):
+            known = {s["name"] for s in services}
+            for edge in scan["dependencies"]:
+                frm, to = edge.get("from"), edge.get("to")
+                if frm in known and to in known:
+                    dependencies.append({"from": frm, "to": to})
         for raw in scan.get("issues") or []:
             issues.append(
                 {
@@ -116,5 +132,14 @@ def build_project_graph(db: Session, project_id: int) -> dict[str, Any]:
         updates=_updates(db, project_id),
         incidents=_incidents(db, project_id),
     )
+    scan_by_svc = open_scan_incidents_by_service(db, project_id)
+    for node in insight.get("nodes") or []:
+        label = node.get("label")
+        if not label:
+            continue
+        scans = scan_by_svc.get(label) or []
+        if scans:
+            node["scan_incidents"] = scans
+            node["scan_incident_id"] = scans[0].get("incident_id")
     insight["workspace"] = workspace or None
     return insight

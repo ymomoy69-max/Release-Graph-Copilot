@@ -98,7 +98,8 @@ def create_order(body: OrderRequest):
                     "body": f"Order {oid} confirmed for {product['name']}",
                 },
             )
-        except Exception: pass
+        except httpx.HTTPError as exc:
+            order["notification_warning"] = str(exc)
 
     return order
 

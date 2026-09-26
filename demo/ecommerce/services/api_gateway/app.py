@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
 from demo.ecommerce.common.config import (
@@ -15,6 +16,17 @@ from demo.ecommerce.common.config import (
 )
 
 app = FastAPI(title="api-gateway", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://127.0.0.1:8082",
+        "http://localhost:8082",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 async def _forward(method: str, url: str, request: Request) -> Response:

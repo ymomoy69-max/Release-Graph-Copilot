@@ -401,6 +401,14 @@ def persist_scan(db: Session, project: Project, scan: dict[str, Any]) -> dict[st
             svc.source_path = meta.get("path") or svc.source_path or ""
             svc.repository_id = svc.repository_id or repo.id
 
+    scanned_names = {meta["name"] for meta in scan.get("services") or [] if meta.get("name")}
+    if scanned_names:
+        for name, svc in list(existing.items()):
+            if name not in scanned_names:
+                db.delete(svc)
+                existing.pop(name, None)
+        db.flush()
+
     deps = db.scalars(
         select(ServiceDependency).where(ServiceDependency.project_id == project.id)
     ).all()

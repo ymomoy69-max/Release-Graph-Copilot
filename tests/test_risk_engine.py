@@ -23,3 +23,43 @@ def test_risk_level_medium_for_production_multi_service():
     )
     assert result.level in ("MEDIUM", "HIGH")
     assert result.factors
+
+
+def test_clean_workspace_scan_lowers_risk():
+    release = Release(
+        id=1,
+        project_id=1,
+        version="1.0.0",
+        status=ReleaseStatus.DEPLOYED,
+        rollback_available=False,
+    )
+    services = [type("S", (), {"criticality": "high"})() for _ in range(4)]
+    with_issues = calculate_release_risk(
+        release,
+        services,
+        commit_count=0,
+        pr_count=0,
+        failed_builds=0,
+        failed_tests=0,
+        production=True,
+        dependency_depth=2,
+        recent_incidents=0,
+        scan_issue_count=3,
+        scan_blocking_count=0,
+    )
+    clean = calculate_release_risk(
+        release,
+        services,
+        commit_count=0,
+        pr_count=0,
+        failed_builds=0,
+        failed_tests=0,
+        production=True,
+        dependency_depth=2,
+        recent_incidents=0,
+        scan_issue_count=0,
+        scan_blocking_count=0,
+    )
+    assert clean.score < with_issues.score
+    assert clean.level in ("LOW", "MEDIUM")
+    assert any(f[0] == "clean_workspace" for f in clean.factors)

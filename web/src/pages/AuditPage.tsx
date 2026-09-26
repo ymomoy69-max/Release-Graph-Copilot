@@ -4,17 +4,18 @@ import { api } from "../api";
 const ACTION_LABEL: Record<string, string> = {
   "copilot.ask": "Asked Copilot a question",
   "incident.create": "Created an incident",
-  "simulation.service_failure": "Demo: created a service-failure incident",
-  "simulation.payment_failure": "Demo: created a payment-failure incident",
+  "incident.checkout_failure": "Opened an incident from a failed checkout",
   "workspace.scan": "Scanned a workspace",
   "analysis.errors": "Ran error analysis",
-  "fix_pr.assign": "Assigned a demo fix PR",
-  "fix_pr.approve": "Approved a demo fix PR",
-  "fix_pr.reject": "Rejected a demo fix PR",
-  "fix_pr.merge": "Marked a demo fix PR merged",
-  "release.rollback": "Rolled back a release",
+  "fix_pr.assign": "Assigned a fix ticket",
+  "fix_pr.approve": "Approved a fix ticket",
+  "fix_pr.reject": "Rejected a fix ticket",
+  "fix_pr.merge": "Closed a fix ticket after re-scan",
+  "release.create_next": "Started the next release from production baseline",
+  "release.mark_ready": "Marked a release READY to ship",
+  "release.deploy": "Deployed a release to production",
+  "release.rollback": "Rolled production back to baseline",
   "readiness.check": "Ran a readiness (GO / NO-GO) check",
-  "simulator.deploy": "Demo: simulated a deploy",
 };
 
 export default function AuditPage() {
@@ -31,7 +32,7 @@ export default function AuditPage() {
           <h2>Audit log</h2>
           <p className="muted">
             A receipt of important actions: Copilot, readiness, rollbacks, and human approve/merge of
-            demo fix PRs. Nothing here changes the live shop or writes to GitHub.
+            fix tickets. Nothing here writes to GitHub.
           </p>
         </div>
       </div>

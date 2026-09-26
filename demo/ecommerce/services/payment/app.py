@@ -1,6 +1,7 @@
 """payment-service — charges with demo failure mode."""
 from __future__ import annotations
 
+import os
 import time
 import uuid
 
@@ -12,16 +13,16 @@ from demo.ecommerce.common.schemas import FailureMode, PaymentRequest
 
 app = FastAPI(title="payment-service", version="1.0.0")
 
-# Intentional demo defect: processor credential in source (scanner: hardcoded_secret).
-WEBHOOK_SECRET = "whsec_demo_hardcoded_rotate_me"
+WEBHOOK_SECRET = os.getenv("PAYMENT_WEBHOOK_SECRET", "")
 
 _failure = {"enabled": False, "latency_ms": 0}
 _payments: dict[str, dict] = {}
 
+_HTTP_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
+
 
 def _processor_client() -> httpx.Client:
-    # Intentional demo defect: outbound client with no timeout (scanner: http_no_timeout).
-    return httpx.Client()
+    return httpx.Client(timeout=_HTTP_TIMEOUT)
 
 
 @app.get("/health")

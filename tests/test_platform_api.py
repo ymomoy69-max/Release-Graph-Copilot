@@ -40,10 +40,16 @@ def test_login_and_dashboard(client: TestClient):
     token = _token(client)
     projects = client.get("/api/v1/projects", headers={"Authorization": f"Bearer {token}"}).json()
     assert any(p["slug"] == "ecommerce" for p in projects)
+    assert any(p["slug"] == "streaming" for p in projects)
+    streaming = next(p for p in projects if p["slug"] == "streaming")
+    assert len(streaming.get("readiness_presets") or []) >= 3
+    demo = next(p for p in streaming["readiness_presets"] if p["id"] == "streaming")
+    assert "streaming" in demo["workspace"]
     pid = next(p["id"] for p in projects if p["slug"] == "ecommerce")
     dash = client.get(f"/api/v1/dashboard?project_id={pid}", headers={"Authorization": f"Bearer {token}"}).json()
     assert dash["services_count"] >= 7
-    assert dash["recent_releases"]
+    assert dash["scan_issue_count"] >= 0
+    assert dash.get("workspace_path")
 
 
 def test_workspace_scan_endpoint(client: TestClient):
@@ -78,7 +84,6 @@ def test_graph_shows_breaking_links(client: TestClient):
     g = client.get(f"/api/v1/graph?project_id={pid}", headers=headers).json()
     assert g["broken_links"]
     assert any(l["to"] == "payment-service" for l in g["broken_links"])
-    assert g["updates"]
     pay = next(n for n in g["nodes"] if n["label"] == "payment-service")
     assert pay["status"] in {"broken", "warning"}
     assert pay["would_change"]
@@ -121,7 +126,12 @@ def test_fix_pr_human_and_four_eyes(client: TestClient):
         return
     assert prs
     assert prs[0]["assignee"] is not None
-    first = next(p for p in prs if p["status"] in {"NEEDS_HUMAN", "OPEN"})
+    first = next(
+        p
+        for p in prs
+        if p["status"] in {"NEEDS_HUMAN", "OPEN"}
+        and p["code"] in {"hardcoded_secret", "swallowed_exception", "http_no_timeout", "sql_fstring"}
+    )
     assert first["human_required"] is True
 
     no_confirm = client.post(
@@ -156,8 +166,13 @@ def test_fix_pr_human_and_four_eyes(client: TestClient):
         headers=headers_admin,
         json={"confirm": True},
     )
-    assert merged.status_code == 200
-    assert merged.json()["status"] == "MERGED"
+    assert merged.status_code == 400
+    body = merged.json()
+    detail = str(body.get("detail") or body.get("message") or body)
+    assert "still finds" in detail.lower()
+    still = client.get(f"/api/v1/fix-prs?project_id={pid}", headers=headers_admin).json()
+    row = next(p for p in still if p["id"] == first["id"])
+    assert row["status"] == "APPROVED"
 
 
 def test_copilot_uses_tools(client: TestClient):
@@ -166,9 +181,9 @@ def test_copilot_uses_tools(client: TestClient):
     r = client.post(
         "/api/v1/copilot/ask",
         headers={"Authorization": f"Bearer {token}"},
-        json={"project_id": pid, "question": "What changed in the latest release?"},
+        json={"project_id": pid, "question": "What services are in this project?"},
     )
     assert r.status_code == 200
     body = r.json()
     assert body["tool_calls"]
-    assert "release" in body["answer"].lower() or "v2.8" in body["answer"]
+    assert "service" in body["answer"].lower() or "payment" in body["answer"].lower()

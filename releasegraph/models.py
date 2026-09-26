@@ -96,6 +96,11 @@ class Project(Base):
     name: Mapped[str] = mapped_column(String(255))
     description: Mapped[str] = mapped_column(Text, default="")
     workspace_path: Mapped[str] = mapped_column(String(1024), default="")
+    org_config_path: Mapped[str] = mapped_column(String(1024), default="")
+    readiness_presets_json: Mapped[str] = mapped_column(Text, default="[]")
+    production_release_id: Mapped[int | None] = mapped_column(
+        ForeignKey("releases.id", use_alter=True), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     __table_args__ = (UniqueConstraint("organization_id", "slug", name="uq_project_org_slug"),)
 
@@ -201,6 +206,9 @@ class Release(Base):
     risk_level: Mapped[str] = mapped_column(String(16), default="LOW")
     risk_score: Mapped[float] = mapped_column(Float, default=0.0)
     rollback_available: Mapped[bool] = mapped_column(Boolean, default=True)
+    baseline_release_id: Mapped[int | None] = mapped_column(
+        ForeignKey("releases.id"), nullable=True, index=True
+    )
 
 
 class ReleaseCommit(Base):
@@ -309,7 +317,7 @@ class CopilotMessage(Base):
 
 
 class FixProposal(Base):
-    """In-app demo PR. Not GitHub, not Jira — a reviewable ticket assigned to an employee."""
+    """In-app fix ticket from workspace scan — human review before close."""
 
     __tablename__ = "fix_proposals"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -336,4 +344,5 @@ class FixProposal(Base):
     human_required: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     merged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    verify_message: Mapped[str] = mapped_column(Text, default="")
     __table_args__ = (UniqueConstraint("project_id", "number", name="uq_fix_proposal_number"),)

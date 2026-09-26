@@ -187,6 +187,10 @@ h3 { font-size: 0.95rem; font-weight: 600; color: var(--text-secondary); }
   color: var(--text-white);
 }
 
+.nav-link:hover small {
+  color: #DBEAFE;
+}
+
 .nav-link.active {
   background: var(--primary);
   color: var(--text-white);
@@ -194,6 +198,15 @@ h3 { font-size: 0.95rem; font-weight: 600; color: var(--text-secondary); }
 }
 
 .nav-link.active small { color: #DBEAFE; }
+
+.nav-link.active:hover {
+  background: var(--primary);
+  color: var(--text-white);
+}
+
+.nav-link.active:hover small {
+  color: #DBEAFE;
+}
 
 .sidebar-foot {
   padding-top: 0.75rem;
@@ -281,20 +294,28 @@ button, .btn {
   transition: background 0.12s ease, transform 0.08s ease;
 }
 
-button:hover:not(:disabled) { background: var(--blue-hover); }
+button:hover:not(:disabled) { background: var(--blue-hover); color: var(--text-white); }
 button:active:not(:disabled) { background: var(--blue-active); transform: translateY(1px); }
 button.secondary {
   background: var(--white);
   color: var(--navy);
   border: 1px solid var(--border);
 }
-button.secondary:hover:not(:disabled) { background: var(--background-blue); border-color: var(--border-blue); }
+button.secondary:hover:not(:disabled) {
+  background: var(--background-blue);
+  border-color: var(--border-blue);
+  color: var(--navy);
+}
 button.danger { background: var(--error); }
-button.danger:hover:not(:disabled) { background: #b91c1c; }
+button.danger:hover:not(:disabled) { background: #b91c1c; color: var(--text-white); }
 button.ghost {
   background: transparent;
   color: var(--text-secondary);
   border: 1px solid var(--border);
+}
+button.ghost:hover:not(:disabled) {
+  background: var(--background-blue);
+  color: var(--navy);
 }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -314,6 +335,18 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   background: var(--background-blue);
   border-color: var(--border-blue);
   color: var(--primary-dark);
+}
+
+button.chip:hover:not(:disabled) {
+  background: var(--background-blue);
+  border-color: var(--border-blue);
+  color: var(--navy);
+}
+
+button.chip.active:hover:not(:disabled) {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--text-white);
 }
 
 input, textarea, select {
@@ -422,12 +455,40 @@ tr:hover td { background: var(--background-blue); }
 .muted { color: var(--text-muted); font-size: 0.85rem; }
 .ok { color: var(--success); }
 
+.ops-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  align-items: center;
+  padding: 0.85rem 1.1rem;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+.ops-strip strong {
+  color: var(--text);
+}
+
+.card.deploy-blocked {
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+
 .graph-wrap {
   height: 420px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
   background: var(--white);
+  transition: opacity 0.2s ease;
+}
+
+.graph-wrap.graph-refreshing {
+  opacity: 0.92;
+}
+
+.graph-live {
+  font-size: 0.78rem;
 }
 
 .graph-banner {
@@ -631,9 +692,20 @@ button.pick {
 }
 
 button.pick strong { font-size: 0.88rem; line-height: 1.35; }
+button.pick:hover:not(:disabled) {
+  background: var(--background-blue);
+  color: var(--navy);
+  border-color: var(--border-blue);
+}
+
 button.pick.active {
   border-color: var(--border-blue);
   background: var(--background-blue);
+}
+
+button.pick.active:hover:not(:disabled) {
+  background: var(--background-blue);
+  color: var(--navy);
 }
 
 .story {
