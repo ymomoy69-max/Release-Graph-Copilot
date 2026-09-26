@@ -8,10 +8,18 @@ from sqlalchemy.orm import Session
 
 from releasegraph.ai_layer import enrich_issues, llm_enabled
 from releasegraph.models import Incident, IncidentStatus, Project, Service, ServiceDependency
-from releasegraph.proposals import serialize_proposal, upsert_from_issues
+from releasegraph.proposals import (
+    close_junk_fix_proposals,
+    prune_stale_fix_proposals,
+    serialize_proposal,
+    upsert_from_issues,
+)
 from releasegraph.risk_engine import blast_radius
 from releasegraph.safety import apply_safety_gate
+from releasegraph.project_scan import dismiss_scan_tickets, requires_manual_scan, skip_scan_tickets, workspace_is_live
 from releasegraph.workspace_scan import scan_workspace
+
+SCAN_ONLY_SLUGS = frozenset({"streaming"})
 
 ISSUE_COPY: dict[str, dict[str, str]] = {
     "hardcoded_secret": {
@@ -163,6 +171,28 @@ def analyze_project(
     use_llm: bool = True,
 ) -> dict[str, Any]:
     project = db.get(Project, project_id)
+    scan_only = bool(project and project.slug in SCAN_ONLY_SLUGS)
+    if project and requires_manual_scan(project) and not workspace_is_live(project):
+        return {
+            "project_id": project_id,
+            "workspace": project.workspace_path or None,
+            "issue_count": 0,
+            "high_count": 0,
+            "services": [],
+            "issues": [],
+            "safety": {
+                "engine_source_of_truth": True,
+                "human_required": True,
+                "llm_used": False,
+                "llm_enabled": llm_enabled(),
+                "llm_attempted": False,
+                "note": "Scan a workspace on Readiness to load engine findings.",
+            },
+            "proposals_created": 0,
+            "proposals": [],
+            "scan": None,
+            "awaiting_scan": True,
+        }
     root = workspace or (project.workspace_path if project else None) or ""
     issues: list[dict[str, Any]] = []
 
@@ -172,7 +202,7 @@ def analyze_project(
         for raw in scan.get("issues") or []:
             issues.append(_from_scan_issue(db, project_id, raw))
 
-    if checklist:
+    if checklist and not scan_only:
         for check in checklist.get("checks") or []:
             for finding in check.get("findings") or []:
                 if not isinstance(finding, dict):
@@ -180,21 +210,22 @@ def analyze_project(
                 if finding.get("severity") in {"block", "warning"}:
                     issues.append(_from_rgc_finding(db, project_id, finding, check.get("name") or check.get("id") or "check"))
 
-    if incident_id:
-        row = _from_incident(db, project_id, incident_id)
-        if row:
-            issues.append(row)
-    else:
-        open_incs = db.scalars(
-            select(Incident).where(
-                Incident.project_id == project_id,
-                Incident.status != IncidentStatus.RESOLVED,
-            )
-        ).all()
-        for inc in open_incs:
-            row = _from_incident(db, project_id, inc.id)
+    if not scan_only:
+        if incident_id:
+            row = _from_incident(db, project_id, incident_id)
             if row:
                 issues.append(row)
+        elif not checklist:
+            open_incs = db.scalars(
+                select(Incident).where(
+                    Incident.project_id == project_id,
+                    Incident.status != IncidentStatus.RESOLVED,
+                )
+            ).all()
+            for inc in open_incs:
+                row = _from_incident(db, project_id, inc.id)
+                if row:
+                    issues.append(row)
 
     engine_issues = list(issues)
     llm_issues = None
@@ -210,7 +241,16 @@ def analyze_project(
 
     created = []
     if project:
-        created = upsert_from_issues(db, project.id, project.organization_id, issues)
+        if skip_scan_tickets(project):
+            dismiss_scan_tickets(db, project)
+            issues = [i for i in issues if i.get("source") != "workspace_scan"]
+        else:
+            close_junk_fix_proposals(db, project.id)
+            prune_stale_fix_proposals(db, project.id, issues)
+            created = upsert_from_issues(db, project.id, project.organization_id, issues)
+
+    if project and skip_scan_tickets(project):
+        issues = [i for i in issues if i.get("source") != "workspace_scan"]
 
     high = sum(1 for i in issues if i.get("severity") in {"high", "block", "critical"})
     return {

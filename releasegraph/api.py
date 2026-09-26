@@ -303,7 +303,19 @@ def list_fix_prs(
     db: Annotated[Session, Depends(get_db)],
     project_id: int = Query(...),
 ):
-    _project_for_user(db, user, project_id)
+    project = _project_for_user(db, user, project_id)
+    from releasegraph.project_scan import workspace_is_live
+
+    from releasegraph.project_scan import skip_scan_tickets
+
+    if skip_scan_tickets(project):
+        from releasegraph.project_scan import dismiss_scan_tickets
+
+        dismiss_scan_tickets(db, project)
+        db.commit()
+        return []
+    if not workspace_is_live(project):
+        return []
     rows = db.scalars(
         select(FixProposal).where(FixProposal.project_id == project_id).order_by(FixProposal.number.desc())
     ).all()
@@ -470,7 +482,10 @@ def dashboard(
     project_id: int = Query(...),
 ):
     project = _project_for_user(db, user, project_id)
-    _sync_shop_checkout_incidents(db, project_id, user)
+    from releasegraph.project_scan import workspace_is_live
+
+    if workspace_is_live(project):
+        _sync_shop_checkout_incidents(db, project_id, user)
     active = db.scalar(
         select(func.count(Release.id)).where(
             Release.project_id == project_id,
@@ -516,7 +531,14 @@ def dashboard(
     scan_high_count = 0
     broken_links = 0
     workspace_label = None
-    if workspace and Path(workspace).is_dir():
+    from releasegraph.project_scan import skip_scan_tickets
+
+    if (
+        workspace_is_live(project)
+        and not skip_scan_tickets(project)
+        and workspace
+        and Path(workspace).is_dir()
+    ):
         try:
             live = scan_workspace(workspace)
             workspace_label = live.get("workspace") or workspace
@@ -539,7 +561,9 @@ def dashboard(
             pass
 
     insight_bits = []
-    if workspace_label:
+    if not workspace_is_live(project):
+        insight_bits.append("Scan a workspace on Readiness to populate the graph, incidents, and Fix PRs.")
+    elif workspace_label:
         insight_bits.append(
             f"Live scan of {workspace_label}: {scan_issue_count} code issue(s)"
             f"{f', {scan_high_count} high severity' if scan_high_count else ''}."
@@ -590,7 +614,7 @@ def dashboard(
         services_count=svc_count,
         open_fix_prs=open_prs,
         copilot_insight=insight,
-        workspace_path=workspace_label,
+        workspace_path=workspace_label or workspace or None,
         scan_issue_count=scan_issue_count,
         scan_high_count=scan_high_count,
         broken_links=broken_links,
@@ -798,7 +822,14 @@ def sync_shop_incidents(
     db: Annotated[Session, Depends(get_db)],
     project_id: int = Query(...),
 ):
-    _project_for_user(db, user, project_id)
+    project = _project_for_user(db, user, project_id)
+    from releasegraph.project_scan import workspace_is_live
+
+    if not workspace_is_live(project):
+        raise HTTPException(
+            status_code=400,
+            detail="Scan a workspace on Readiness before syncing shop incidents.",
+        )
     _sync_shop_checkout_incidents(db, project_id, user)
     return {"ok": True, **shop_status_payload()}
 
@@ -892,11 +923,23 @@ def list_incidents(
     db: Annotated[Session, Depends(get_db)],
     project_id: int = Query(...),
 ):
-    _project_for_user(db, user, project_id)
+    project = _project_for_user(db, user, project_id)
+    from releasegraph.project_scan import workspace_is_live
+
+    from releasegraph.project_scan import dismiss_scan_tickets, skip_scan_tickets
+    from releasegraph.workspace_incidents import SCAN_PREFIX
+
+    if skip_scan_tickets(project):
+        dismiss_scan_tickets(db, project)
+        db.commit()
+    if not workspace_is_live(project):
+        return []
     _sync_shop_checkout_incidents(db, project_id, user)
     rows = db.scalars(
         select(Incident).where(Incident.project_id == project_id).order_by(Incident.created_at.desc())
     ).all()
+    if skip_scan_tickets(project):
+        rows = [i for i in rows if not i.title.startswith(SCAN_PREFIX)]
     out = []
     for i in rows:
         svc = db.get(Service, i.service_id) if i.service_id else None
@@ -1002,8 +1045,14 @@ def _record_checkout_failure(
     project_id: int,
 ):
     """Turn payment failure on, place one order, and store the gateway response."""
-    _project_for_user(db, user, project_id)
-    project = db.get(Project, project_id)
+    project = _project_for_user(db, user, project_id)
+    from releasegraph.project_scan import workspace_is_live
+
+    if not workspace_is_live(project):
+        raise HTTPException(
+            status_code=400,
+            detail="Scan a workspace on Readiness before running a checkout failure demo.",
+        )
     svc = checkout_target_service(db, project_id)
     if not svc:
         raise HTTPException(

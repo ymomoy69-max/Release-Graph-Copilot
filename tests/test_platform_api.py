@@ -42,14 +42,25 @@ def test_login_and_dashboard(client: TestClient):
     assert any(p["slug"] == "ecommerce" for p in projects)
     assert any(p["slug"] == "streaming" for p in projects)
     streaming = next(p for p in projects if p["slug"] == "streaming")
-    assert len(streaming.get("readiness_presets") or []) >= 3
+    assert len(streaming.get("readiness_presets") or []) >= 1
     demo = next(p for p in streaming["readiness_presets"] if p["id"] == "streaming")
     assert "streaming" in demo["workspace"]
     pid = next(p["id"] for p in projects if p["slug"] == "ecommerce")
     dash = client.get(f"/api/v1/dashboard?project_id={pid}", headers={"Authorization": f"Bearer {token}"}).json()
-    assert dash["services_count"] >= 7
-    assert dash["scan_issue_count"] >= 0
+    assert dash["services_count"] == 0
+    assert dash["scan_issue_count"] == 0
+    assert dash["open_incidents"] == 0
     assert dash.get("workspace_path")
+    from pathlib import Path
+
+    ws = str(Path(__file__).resolve().parent.parent / "demo" / "ecommerce")
+    client.post(
+        "/api/v1/workspaces/scan",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"workspace": ws, "project_id": pid, "persist": True},
+    )
+    dash2 = client.get(f"/api/v1/dashboard?project_id={pid}", headers={"Authorization": f"Bearer {token}"}).json()
+    assert dash2["services_count"] >= 7
 
 
 def test_workspace_scan_endpoint(client: TestClient):

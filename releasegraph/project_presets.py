@@ -26,7 +26,6 @@ def default_streaming_presets(streaming_path: Path) -> list[dict[str, Any]]:
             "repos": [],
             "hint": "8-service OTT stack: content, entitlement, billing, session, notification, recommendation, gateway, frontend.",
         },
-        *rgc_fixture_presets(),
     ]
 
 

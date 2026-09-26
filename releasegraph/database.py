@@ -36,6 +36,7 @@ def _ensure_sqlite_columns() -> None:
             ("org_config_path", "VARCHAR(1024) DEFAULT ''"),
             ("readiness_presets_json", "TEXT DEFAULT '[]'"),
             ("production_release_id", "INTEGER"),
+            ("workspace_synced_at", "DATETIME"),
         ],
         "fix_proposals": [("verify_message", "TEXT DEFAULT ''")],
         "services": [("source_path", "VARCHAR(1024) DEFAULT ''")],

@@ -8,13 +8,15 @@ from sqlalchemy import select
 from releasegraph.auth import hash_password
 from releasegraph.config import settings
 from releasegraph.database import SessionLocal, init_db
-from releasegraph.models import Organization, Project, ServiceDependency, User, UserRole
+from releasegraph.models import FixProposal, FixProposalStatus, Organization, Project, ServiceDependency, User, UserRole
+from releasegraph.proposals import close_junk_fix_proposals
 from releasegraph.project_presets import (
     default_ecommerce_presets,
     default_streaming_presets,
     serialize_presets_json,
 )
 from releasegraph.workspace_scan import _slug, scan_workspace
+from releasegraph.project_scan import ensure_ecommerce_awaiting_scan, ensure_streaming_clean
 from releasegraph.workspace_sync import apply_workspace_scan
 
 
@@ -31,6 +33,14 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 def ensure_bootstrap_projects() -> None:
     """Add seeded demo projects when missing (no full DB reset)."""
+    db = SessionLocal()
+    try:
+        ensure_ecommerce_awaiting_scan(db)
+        ensure_streaming_clean(db)
+        db.commit()
+    finally:
+        db.close()
+
     streaming_root = (REPO_ROOT / "demo" / "streaming").resolve()
     if not streaming_root.is_dir():
         return
@@ -68,12 +78,39 @@ def ensure_bootstrap_projects() -> None:
             ).all()
         )
         ws = (streaming.workspace_path or "").strip()
-        needs_rescan = dep_count == 0 or "demo/streaming" not in ws.replace("\\", "/")
+        preset_blob = streaming.readiness_presets_json or ""
+        junk_prs = db.scalar(
+            select(FixProposal.id).where(
+                FixProposal.project_id == streaming.id,
+                FixProposal.status.in_(
+                    [FixProposalStatus.OPEN, FixProposalStatus.NEEDS_HUMAN, FixProposalStatus.APPROVED]
+                ),
+                FixProposal.code.in_(("missing_repo", "unknown_repo")),
+            ).limit(1)
+        )
+        open_scan_pr = db.scalar(
+            select(FixProposal.id).where(
+                FixProposal.project_id == streaming.id,
+                FixProposal.status.in_(
+                    [FixProposalStatus.OPEN, FixProposalStatus.NEEDS_HUMAN, FixProposalStatus.APPROVED]
+                ),
+            ).limit(1)
+        )
+        needs_rescan = (
+            dep_count == 0
+            or "demo/streaming" not in ws.replace("\\", "/")
+            or "acme-fixtures" in preset_blob
+            or junk_prs is not None
+            or open_scan_pr is not None
+        )
         if needs_rescan:
             streaming.workspace_path = correct_ws
+            streaming.org_config_path = ""
             streaming.readiness_presets_json = serialize_presets_json(presets)
             streaming.description = f"OTT microservices on disk: {streaming_root}"
+            close_junk_fix_proposals(db, streaming.id)
             _scan_project(db, streaming, admin)
+            ensure_streaming_clean(db)
             db.commit()
             print(f"Repaired Streaming Platform workspace and graph ({streaming_root})")
     finally:
@@ -189,9 +226,9 @@ def seed(reset: bool = False) -> None:
         db.add(streaming)
         db.flush()
 
-        for project in (ecommerce, streaming):
-            n_svc, n_issues = _scan_project(db, project, admin)
-            print(f"  Project {project.slug}: {n_svc} services, {n_issues} scanner issues")
+        n_svc, n_issues = _scan_project(db, streaming, admin)
+        print(f"  Project streaming: {n_svc} services, {n_issues} scanner issues")
+        print("  Project ecommerce: awaiting Readiness scan (graph empty until then)")
 
         db.commit()
         print("Seed complete (2 projects).")

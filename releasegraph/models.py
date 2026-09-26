@@ -101,6 +101,9 @@ class Project(Base):
     production_release_id: Mapped[int | None] = mapped_column(
         ForeignKey("releases.id", use_alter=True), nullable=True, index=True
     )
+    workspace_synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     __table_args__ = (UniqueConstraint("organization_id", "slug", name="uq_project_org_slug"),)
 

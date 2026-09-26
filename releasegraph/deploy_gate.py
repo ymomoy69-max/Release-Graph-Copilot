@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from releasegraph.models import Incident, IncidentStatus, Project, Service
+from releasegraph.project_scan import skip_scan_tickets, workspace_is_live
 from releasegraph.release_train import _BLOCKING_CODES
 from releasegraph.workspace_incidents import SCAN_PREFIX
 from releasegraph.workspace_scan import scan_workspace
@@ -30,6 +31,22 @@ def _incident_for_finding(
 
 def deploy_gate_details(db: Session, project: Project) -> dict[str, Any]:
     """Blocking scanner findings on disk and links to open incidents."""
+    if skip_scan_tickets(project):
+        return {
+            "blocked": False,
+            "message": "Streaming demo — deploy gate uses the workspace map only (no scanner blockers).",
+            "blocking_count": 0,
+            "issue_count": 0,
+            "findings": [],
+        }
+    if not workspace_is_live(project):
+        return {
+            "blocked": False,
+            "message": "Scan a workspace on Readiness to evaluate deploy gate.",
+            "blocking_count": 0,
+            "issue_count": 0,
+            "findings": [],
+        }
     path = (project.workspace_path or "").strip()
     if not path:
         return {

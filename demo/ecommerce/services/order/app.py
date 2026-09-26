@@ -89,6 +89,7 @@ def create_order(body: OrderRequest):
         order["status"] = "confirmed"
         _orders[oid] = order
 
+        # DEMO-SCAN
         try:
             c.post(
                 f"{NOTIFICATION_SERVICE_URL}/notifications",
@@ -98,8 +99,7 @@ def create_order(body: OrderRequest):
                     "body": f"Order {oid} confirmed for {product['name']}",
                 },
             )
-        except httpx.HTTPError as exc:
-            order["notification_warning"] = str(exc)
+        except Exception: pass
 
     return order
 

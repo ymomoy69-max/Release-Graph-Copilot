@@ -1,6 +1,7 @@
 """inventory-service — stock levels and reservations."""
 from __future__ import annotations
 
+import httpx
 from fastapi import FastAPI, HTTPException
 
 from demo.ecommerce.common.config import SERVICE_NAME
@@ -8,6 +9,11 @@ from demo.ecommerce.common.config import SERVICE_NAME
 app = FastAPI(title="inventory-service", version="1.0.0")
 
 _INVENTORY: dict[str, int] = {"sku-100": 50, "sku-200": 120}
+
+
+# DEMO-SCAN
+def _warehouse_client() -> httpx.Client:
+    return httpx.Client()
 
 
 @app.get("/health")

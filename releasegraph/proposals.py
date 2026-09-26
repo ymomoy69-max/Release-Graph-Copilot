@@ -8,6 +8,31 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from releasegraph.models import FixProposal, FixProposalStatus, User, UserRole
+from releasegraph.verify import SCAN_CODES
+
+# rgc layout/catalog findings are not file-level code fixes — never open Fix PRs for them.
+NON_FILE_ISSUE_CODES = frozenset(
+    {
+        "missing_repo",
+        "unknown_repo",
+        "empty_release",
+        "missing_workspace",
+        "invalid_manifest",
+    }
+)
+
+
+def issue_qualifies_for_fix_pr(issue: dict[str, Any]) -> bool:
+    if issue.get("source") != "workspace_scan":
+        return False
+    code = str(issue.get("code") or "")
+    if code not in SCAN_CODES or code in NON_FILE_ISSUE_CODES:
+        return False
+    file_path = str(issue.get("file") or "")
+    if not file_path or file_path in {"unknown", "runtime", "workspace"}:
+        return False
+    normalized = file_path.replace("\\", "/")
+    return "/" in normalized or normalized.endswith(".py")
 
 
 def _next_number(db: Session, project_id: int) -> int:
@@ -47,7 +72,8 @@ def upsert_from_issues(
     ).all()
     existing = {(p.file_path, p.code, p.line): p for p in open_rows}
 
-    for i, issue in enumerate(issues):
+    ticket_issues = [i for i in issues if issue_qualifies_for_fix_pr(i)]
+    for i, issue in enumerate(ticket_issues):
         file_path = str(issue.get("file") or "unknown")
         code = str(issue.get("code") or "issue")
         line = issue.get("line")
@@ -107,6 +133,56 @@ def upsert_from_issues(
         existing[key] = pr
         created.append(pr)
     return created
+
+
+def close_junk_fix_proposals(db: Session, project_id: int) -> int:
+    """Close open tickets that are rgc repo-layout noise or not real file paths."""
+    rows = db.scalars(
+        select(FixProposal).where(
+            FixProposal.project_id == project_id,
+            FixProposal.status.in_(
+                [FixProposalStatus.OPEN, FixProposalStatus.NEEDS_HUMAN, FixProposalStatus.APPROVED]
+            ),
+        )
+    ).all()
+    closed = 0
+    for pr in rows:
+        junk = (pr.code or "") in NON_FILE_ISSUE_CODES
+        path = (pr.file_path or "").replace("\\", "/")
+        if not junk and ("/" in path or path.endswith(".py")):
+            continue
+        pr.status = FixProposalStatus.REJECTED
+        pr.verify_message = "Closed: not a workspace file finding (stale rgc repo check)."
+        closed += 1
+    return closed
+
+
+def prune_stale_fix_proposals(db: Session, project_id: int, issues: list[dict[str, Any]]) -> int:
+    """Close open tickets that no longer match a current scanner issue."""
+    keep = set()
+    for issue in issues:
+        if not issue_qualifies_for_fix_pr(issue):
+            continue
+        file_path = str(issue.get("file") or "unknown")
+        code = str(issue.get("code") or "issue")
+        line = issue.get("line")
+        line_n = int(line) if isinstance(line, int) or (isinstance(line, str) and line.isdigit()) else None
+        keep.add((file_path, code, line_n))
+    rows = db.scalars(
+        select(FixProposal).where(
+            FixProposal.project_id == project_id,
+            FixProposal.status.in_(
+                [FixProposalStatus.OPEN, FixProposalStatus.NEEDS_HUMAN, FixProposalStatus.APPROVED]
+            ),
+        )
+    ).all()
+    closed = 0
+    for pr in rows:
+        if (pr.file_path, pr.code, pr.line) in keep:
+            continue
+        pr.status = FixProposalStatus.REJECTED
+        closed += 1
+    return closed
 
 
 def serialize_proposal(db: Session, p: FixProposal) -> dict[str, Any]:

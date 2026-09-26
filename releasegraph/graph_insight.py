@@ -21,6 +21,7 @@ from releasegraph.models import (
     ServiceDependency,
 )
 from releasegraph.deploy_gate import open_scan_incidents_by_service
+from releasegraph.project_scan import empty_graph_payload, skip_scan_tickets, workspace_is_live
 from releasegraph.workspace_scan import scan_workspace
 
 
@@ -94,6 +95,9 @@ def _incidents(db: Session, project_id: int) -> list[dict[str, Any]]:
 
 def build_project_graph(db: Session, project_id: int) -> dict[str, Any]:
     project = db.get(Project, project_id)
+    if project and not workspace_is_live(project):
+        ws = (project.workspace_path or "").strip() or None
+        return empty_graph_payload(ws)
     svcs = db.scalars(select(Service).where(Service.project_id == project_id).order_by(Service.name)).all()
     deps = db.scalars(select(ServiceDependency).where(ServiceDependency.project_id == project_id)).all()
     by_id = {s.id: s.name for s in svcs}
@@ -114,23 +118,25 @@ def build_project_graph(db: Session, project_id: int) -> dict[str, Any]:
                 frm, to = edge.get("from"), edge.get("to")
                 if frm in known and to in known:
                     dependencies.append({"from": frm, "to": to})
-        for raw in scan.get("issues") or []:
-            issues.append(
-                {
-                    "file": raw.get("file"),
-                    "line": raw.get("line"),
-                    "service": raw.get("service"),
-                    "code": raw.get("code"),
-                    "severity": "high" if raw.get("code") in {"hardcoded_secret", "sql_fstring"} else "medium",
-                    "problem": raw.get("snippet") or raw.get("code"),
-                }
-            )
+        if not skip_scan_tickets(project):
+            for raw in scan.get("issues") or []:
+                issues.append(
+                    {
+                        "file": raw.get("file"),
+                        "line": raw.get("line"),
+                        "service": raw.get("service"),
+                        "code": raw.get("code"),
+                        "severity": "high" if raw.get("code") in {"hardcoded_secret", "sql_fstring"} else "medium",
+                        "problem": raw.get("snippet") or raw.get("code"),
+                    }
+                )
+    open_incidents = [] if (project and project.slug == "streaming") else _incidents(db, project_id)
     insight = build_insight(
         services=services,
         dependencies=dependencies,
         issues=issues,
         updates=_updates(db, project_id),
-        incidents=_incidents(db, project_id),
+        incidents=open_incidents,
     )
     scan_by_svc = open_scan_incidents_by_service(db, project_id)
     for node in insight.get("nodes") or []:

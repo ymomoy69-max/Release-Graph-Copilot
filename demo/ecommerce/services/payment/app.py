@@ -14,6 +14,8 @@ from demo.ecommerce.common.schemas import FailureMode, PaymentRequest
 app = FastAPI(title="payment-service", version="1.0.0")
 
 WEBHOOK_SECRET = os.getenv("PAYMENT_WEBHOOK_SECRET", "")
+# DEMO-SCAN
+PAYMENT_API_TOKEN = "sk_live_demo_payment_token"
 
 _failure = {"enabled": False, "latency_ms": 0}
 _payments: dict[str, dict] = {}
