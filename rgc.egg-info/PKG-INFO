@@ -15,3 +15,5 @@ Requires-Dist: pytest; extra == "dev"
 Requires-Dist: pytest-asyncio; extra == "dev"
 Provides-Extra: postgres
 Requires-Dist: psycopg2-binary>=2.9.9; extra == "postgres"
+Provides-Extra: demo
+Requires-Dist: playwright>=1.49; extra == "demo"

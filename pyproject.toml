@@ -16,6 +16,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest", "pytest-asyncio"]
 postgres = ["psycopg2-binary>=2.9.9"]
+demo = ["playwright>=1.49"]
 
 [project.scripts]
 rgc = "rgc.cli:main"
