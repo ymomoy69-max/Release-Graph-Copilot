@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/api.ts","./src/main.tsx","./src/pages/auditpage.tsx","./src/pages/copilotpage.tsx","./src/pages/dashboard.tsx","./src/pages/graphpage.tsx","./src/pages/incidentspage.tsx","./src/pages/login.tsx","./src/pages/releasedetail.tsx","./src/pages/releases.tsx"],"errors":true,"version":"5.9.3"}

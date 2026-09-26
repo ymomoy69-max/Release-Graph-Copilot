@@ -12,7 +12,7 @@ from rgc.citations import attach_citations
 from rgc.graph import load_graph, compute_closure, topological_sort
 from rgc.manifest import load_release, Release, DEFAULT_ORG_CONFIG
 from rgc.models import (
-    CheckResult, Checklist, DeployScope, Finding, CHECK_ORDER, CHECK_NAMES,
+    CheckResult, Checklist, E2EScope, Finding, CHECK_ORDER, CHECK_NAMES,
     format_checklist_json,
 )
 from rgc.org_config import load_org_config_for_release, OrgConfig
@@ -49,19 +49,6 @@ def _checker_accepts_org(checker_fn: Callable) -> bool:
         return False
 
 
-def _deploy_scope(closure: frozenset[str], max_repos: int) -> DeployScope:
-    """Build a DeployScope from the closure."""
-    repos = tuple(sorted(closure))
-    count = len(repos)
-    if max_repos > 0 and count > max_repos:
-        risk = "HIGH"
-    elif count > 3:
-        risk = "MEDIUM"
-    else:
-        risk = "LOW"
-    return DeployScope(repos=repos, repo_count=count, risk_label=risk)
-
-
 def run_release(
     release: Release,
     checkers: list[Callable] | None = None,
@@ -81,14 +68,19 @@ def run_release(
             return config_result
         org_config = config_result
 
+    # Load catalog from org config
     catalog = load_catalog(org_config.catalog)
-    graph = load_graph(release.graph_path)
+
+    # Graph path: release overrides org if it differs from the org graph
+    graph_path = release.graph_path
+    graph = load_graph(graph_path)
     closure = compute_closure(graph, list(release.repos))
     deploy_order = topological_sort(graph, closure)
     workspace = WorkspaceView(release)
-    scope = _deploy_scope(closure, org_config.max_deploy_repos)
 
+    # Submit all checkers concurrently
     results_map: dict[str, CheckResult | None] = {cid: None for cid in CHECK_ORDER}
+    e2e_scope: E2EScope | None = None
 
     def run_checker(checker_fn):
         if _checker_accepts_org(checker_fn):
@@ -107,42 +99,64 @@ def run_release(
                 result = future.result(timeout=timeout_seconds)
             except TimeoutError:
                 results_map[check_id] = _make_error_check(
-                    check_id, "checker_timeout", "Checker timed out.",
+                    check_id,
+                    "checker_timeout",
+                    "Checker timed out.",
                     "Re-run the check. The checker did not finish before the timeout.",
                 )
                 continue
             except Exception as exc:
                 results_map[check_id] = _make_error_check(
-                    check_id, "checker_error", f"Checker failed: {exc}",
+                    check_id,
+                    "checker_error",
+                    f"Checker failed: {exc}",
                     "Fix the checker failure and re-run the check.",
                 )
                 continue
-            results_map[check_id] = result
 
+            # playwright_map returns (CheckResult, E2EScope) when changed_paths is non-empty
+            if isinstance(result, tuple):
+                cr, scope = result
+                results_map[check_id] = cr
+                if check_id == "playwright_map":
+                    e2e_scope = scope
+            else:
+                results_map[check_id] = result
+
+    # Build checks in fixed order
     checks = tuple(results_map[cid] for cid in CHECK_ORDER)
 
+    # Default e2e scope if playwright didn't provide one
+    if e2e_scope is None:
+        e2e_scope = E2EScope(folders=(), estimate_seconds=0, estimate_display="0s")
+
+    # Build checklist (before citations)
     checklist = Checklist.build(
         release_id=release.id,
         question=release.question,
         checks=checks,
         deploy_order=tuple(deploy_order),
-        deploy_scope=scope,
+        e2e=e2e_scope,
     )
 
+    # Run citation engine
     updated_checks, block_report = attach_citations(
         list(checklist.checks),
         workspace,
         org_config=org_config,
     )
 
-    return Checklist.build(
+    # Rebuild checklist with citation-updated checks
+    final_checklist = Checklist.build(
         release_id=release.id,
         question=release.question,
         checks=tuple(updated_checks),
         deploy_order=tuple(deploy_order),
-        deploy_scope=scope,
+        e2e=e2e_scope,
         block_report=block_report,
     )
+
+    return final_checklist
 
 
 def run_release_file(path: str, timeout_seconds: float = 5.0) -> Checklist:
@@ -150,6 +164,9 @@ def run_release_file(path: str, timeout_seconds: float = 5.0) -> Checklist:
     from rgc.models import Checklist as ChecklistType
 
     result = load_release(path)
+
+    # Validation error — result is already a Checklist
     if isinstance(result, ChecklistType):
         return result
+
     return run_release(result, timeout_seconds=timeout_seconds)

@@ -1,14 +1,28 @@
 [project]
 name = "rgc"
-version = "0.1.0"
+version = "1.0.0"
 requires-python = ">=3.11"
-dependencies = ["pyyaml"]
+dependencies = [
+  "pyyaml",
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.32.0",
+  "sqlalchemy>=2.0.36",
+  "pydantic[email]>=2.10.0",
+  "python-jose[cryptography]>=3.3.0",
+  "bcrypt>=4.2.0",
+  "httpx>=0.28.0",
+]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "pytest-asyncio"]
+postgres = ["psycopg2-binary>=2.9.9"]
 
 [project.scripts]
 rgc = "rgc.cli:main"
+releasegraph-seed = "releasegraph.seed:main"
+releasegraph-api = "releasegraph.cli:serve_api"
+releasegraph-scan = "releasegraph.sdk:main"
+demo-ecommerce = "demo.ecommerce.run_all:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -20,4 +34,4 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["rgc*"]
+include = ["rgc*", "releasegraph*", "demo*"]

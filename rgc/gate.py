@@ -24,12 +24,12 @@ def _write_json(path: str, data: dict) -> None:
 
 
 def check(checklist_dict: dict, out_dir: str) -> None:
-    """Write checklist.json and gate.json. Delete any existing deploy-trigger.json."""
+    """Write checklist.json and gate.json. Delete any existing e2e-trigger.json."""
     os.makedirs(out_dir, exist_ok=True)
 
     checklist_path = os.path.join(out_dir, "checklist.json")
     gate_path = os.path.join(out_dir, "gate.json")
-    trigger_path = os.path.join(out_dir, "deploy-trigger.json")
+    trigger_path = os.path.join(out_dir, "e2e-trigger.json")
 
     # Write checklist
     with open(checklist_path, "w", encoding="utf-8") as fh:
@@ -56,7 +56,7 @@ def approve(out_dir: str) -> tuple[int, str, str]:
     """
     gate_path = os.path.join(out_dir, "gate.json")
     checklist_path = os.path.join(out_dir, "checklist.json")
-    trigger_path = os.path.join(out_dir, "deploy-trigger.json")
+    trigger_path = os.path.join(out_dir, "e2e-trigger.json")
 
     gate = _read_json(gate_path)
     checklist = _read_json(checklist_path)
@@ -78,12 +78,13 @@ def approve(out_dir: str) -> tuple[int, str, str]:
         _write_json(gate_path, gate)
 
         # Build trigger
-        scope = checklist.get("deploy_scope", {})
+        e2e = checklist.get("e2e", {})
         trigger = {
             "release_id": checklist.get("release_id", ""),
             "approved": True,
-            "repos": scope.get("repos", []),
-            "deploy_order": checklist.get("deploy_order", []),
+            "folders": e2e.get("folders", []),
+            "estimate_seconds": e2e.get("estimate_seconds"),
+            "estimate_display": e2e.get("estimate_display", ""),
         }
         trigger_json = json.dumps(trigger, indent=2) + "\n"
         with open(trigger_path, "w", encoding="utf-8") as fh:
@@ -101,7 +102,7 @@ def cancel(out_dir: str) -> tuple[int, str, str]:
     """
     gate_path = os.path.join(out_dir, "gate.json")
     checklist_path = os.path.join(out_dir, "checklist.json")
-    trigger_path = os.path.join(out_dir, "deploy-trigger.json")
+    trigger_path = os.path.join(out_dir, "e2e-trigger.json")
 
     gate = _read_json(gate_path)
     checklist = _read_json(checklist_path)

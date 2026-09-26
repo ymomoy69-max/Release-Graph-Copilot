@@ -1,7 +1,17 @@
 Metadata-Version: 2.4
 Name: rgc
-Version: 0.1.0
+Version: 1.0.0
 Requires-Python: >=3.11
 Requires-Dist: pyyaml
+Requires-Dist: fastapi>=0.115.0
+Requires-Dist: uvicorn[standard]>=0.32.0
+Requires-Dist: sqlalchemy>=2.0.36
+Requires-Dist: pydantic[email]>=2.10.0
+Requires-Dist: python-jose[cryptography]>=3.3.0
+Requires-Dist: bcrypt>=4.2.0
+Requires-Dist: httpx>=0.28.0
 Provides-Extra: dev
 Requires-Dist: pytest; extra == "dev"
+Requires-Dist: pytest-asyncio; extra == "dev"
+Provides-Extra: postgres
+Requires-Dist: psycopg2-binary>=2.9.9; extra == "postgres"

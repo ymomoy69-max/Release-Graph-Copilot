@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from rgc.graph import load_graph, detect_cycle, DeployGraph
-from rgc.models import CheckResult, DeployScope, Checklist, CHECK_ORDER, CHECK_NAMES, Finding
+from rgc.models import CheckResult, E2EScope, Checklist, CHECK_ORDER, CHECK_NAMES, Finding
 
 # Overlay path validation pattern
 _SAFE_PATH_RE = re.compile(r"^[A-Za-z0-9_./-]+$")
@@ -66,7 +66,7 @@ def _make_validation_checklist(
         )
         for cid in CHECK_ORDER
     )
-    scope = DeployScope(repos=(), repo_count=0, risk_label="HIGH")
+    e2e = E2EScope(folders=(), estimate_seconds=0, estimate_display="0s")
     return Checklist(
         release_id=release_id,
         question=question,
@@ -77,7 +77,7 @@ def _make_validation_checklist(
         block_report=None,
         deploy_order=(),
         checks=checks,
-        deploy_scope=scope,
+        e2e=e2e,
         suggested_fixes=(suggested_fix,),
     )
 

@@ -1,2 +1,5 @@
 [console_scripts]
+demo-ecommerce = demo.ecommerce.run_all:main
+releasegraph-api = releasegraph.cli:serve_api
+releasegraph-seed = releasegraph.seed:main
 rgc = rgc.cli:main
