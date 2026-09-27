@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -52,9 +53,33 @@ if (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()
-    ensure_demo_staff()
-    ensure_bootstrap_projects()
+    _logger = logging.getLogger(__name__)
+    from releasegraph import database as _db_mod
+
+    _scheme = _db_mod.NORM_DB_URL.split("://", 1)[0] if "://" in _db_mod.NORM_DB_URL else "unknown"
+    _logger.info(
+        "Starting ReleaseGraph lifespan: ENVIRONMENT=%s DEBUG=%s PORT(from_env)=%s DATABASE_scheme=%s CORS_count=%d",
+        settings.environment,
+        settings.debug,
+        os.environ.get("PORT", "<unset>"),
+        _scheme,
+        len(settings.cors_origins),
+    )
+    try:
+        init_db()
+        _logger.info("init_db() completed")
+    except Exception as exc:  # noqa: BLE001
+        _logger.exception("init_db() FAILED: %s (check DATABASE_URL, Postgres plugin network, and psycopg2 install)", exc)
+    try:
+        ensure_demo_staff()
+        _logger.info("ensure_demo_staff() completed")
+    except Exception as exc:  # noqa: BLE001
+        _logger.exception("ensure_demo_staff() FAILED (non-fatal; login may not work): %s", exc)
+    try:
+        ensure_bootstrap_projects()
+        _logger.info("ensure_bootstrap_projects() completed")
+    except Exception as exc:  # noqa: BLE001
+        _logger.exception("ensure_bootstrap_projects() FAILED (non-fatal; demo projects missing): %s", exc)
     yield
 
 
