@@ -1,0 +1,83 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "NIXPACKS",
+    "nixpacksPlan": {
+      "phases": {
+        "setup": {
+          "aptPkgs": ["nodejs", "npm"]
+        },
+        "install": {
+          "cmds": [
+            "python -m pip install --upgrade pip",
+            "pip install -e \".[postgres]\"",
+            "cd web && npm ci"
+          ]
+        },
+        "build": {
+          "cmds": [
+            "cd web && npm run build"
+          ]
+        }
+      }
+    },
+    "buildCommand": "echo 'Nixpacks plan handles install + build phases above'"
+  },
+  "deploy": {
+    "startCommand": "python -m releasegraph.cli serve_api",
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 300,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10
+  },
+  "env": {
+    "ENVIRONMENT": {
+      "description": "Runtime environment tag",
+      "value": "production"
+    },
+    "DEBUG": {
+      "description": "Enable verbose debug logging (false in production)",
+      "value": "false"
+    },
+    "PORT": {
+      "description": "HTTP listen port (assigned automatically by Railway)",
+      "value": "8000"
+    },
+    "DATABASE_URL": {
+      "description": "SQLAlchemy database URL. Automatically injected when you add the Postgres plugin. SQLite fallback is ephemeral (data lost on restart).",
+      "value": "sqlite:///./data/releasegraph.db"
+    },
+    "JWT_SECRET": {
+      "description": "REQUIRED: HS256 signing key for JWT sessions. Generate: python -c 'import secrets; print(secrets.token_urlsafe(64))'",
+      "required": true
+    },
+    "ACCESS_TOKEN_EXPIRE_MINUTES": {
+      "description": "JWT access token TTL in minutes (default: 24 hours)",
+      "value": "1440"
+    },
+    "CORS_ORIGINS": {
+      "description": "Comma-separated list of allowed browser origins. Use * to allow any origin (convenient for Railway's dynamic domain but less restrictive).",
+      "value": "*"
+    },
+    "RG_AI_DISABLE": {
+      "description": "Disable Groq/OpenAI Copilot features so the app boots without AI keys. Set to false and add GROQ_API_KEY to re-enable.",
+      "value": "true"
+    },
+    "GROQ_API_KEY": {
+      "description": "Optional: Groq (or OpenRouter/OpenAI-compatible) API key for the AI Copilot rewriter. Also set RG_AI_DISABLE=false.",
+      "required": false
+    },
+    "GROQ_BASE_URL": {
+      "description": "Optional: Override base URL for LLM API provider (Groq, OpenRouter, OpenAI, etc.)",
+      "value": "https://api.groq.com/openai/v1"
+    },
+    "GROQ_MODEL": {
+      "description": "Optional: LLM model name",
+      "value": "openai/gpt-oss-20b"
+    },
+    "RELEASEGRAPH_WORKSPACE": {
+      "description": "Optional: Default workspace path scanned on first boot for demo projects.",
+      "required": false
+    }
+  }
+}

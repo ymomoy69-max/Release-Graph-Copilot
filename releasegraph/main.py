@@ -33,6 +33,22 @@ logging.getLogger().addFilter(RequestIdFilter())
 for _handler in logging.getLogger().handlers:
     _handler.addFilter(RequestIdFilter())
 
+_WEAK_JWT_DEFAULTS = {
+    "dev-change-me-in-production",
+    "change-me-use-long-random-string",
+    "",
+}
+
+if (
+    settings.environment == "production"
+    and settings.jwt_secret.strip() in _WEAK_JWT_DEFAULTS
+):
+    logging.getLogger(__name__).warning(
+        "SECURITY WARNING: JWT_SECRET is set to the weak dev default in ENVIRONMENT=production. "
+        "Set JWT_SECRET to a long random string via the Railway dashboard before exposing this instance. "
+        "Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(64))'"
+    )
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
