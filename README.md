@@ -308,7 +308,9 @@ for link in result["broken_links"]:
 
 ## Deploy (Railway)
 
-Nixpacks builds the UI (`web/`) and starts `python -m releasegraph.cli serve_api`. No Dockerfile. No Postgres. No login.
+Railway builds with the root [`Dockerfile`](Dockerfile) (multi-stage: Vite UI → FastAPI). No Postgres. No login.
+
+In the Railway service settings, leave **Root Directory** empty (repo root). Do not set it to `web/`.
 
 Public networking **Target port: `8080`** (Railway sets `PORT` for you — do not add `PORT` as a variable).
 
@@ -330,7 +332,7 @@ Optional (paste these if you want explicit production defaults):
 
 **Do not set:** `PORT`, `DATABASE_URL`, `JWT_SECRET`. Do not add a Postgres plugin.
 
-Health: `/health`. Docs: `/api/docs`. Config: [`railway.json`](railway.json) · [`nixpacks.toml`](nixpacks.toml) · [`Procfile`](Procfile)
+Health: `/health`. Docs: `/api/docs`. Config: [`railway.json`](railway.json) · [`Dockerfile`](Dockerfile) · [`Procfile`](Procfile)
 
 ---
 
