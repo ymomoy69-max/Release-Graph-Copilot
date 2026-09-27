@@ -1,11 +1,21 @@
+providers = ["python", "node"]
+
+[variables]
+NIXPACKS_PYTHON_VERSION = "3.12"
+
 [phases.setup]
-nixPkgs = ["python312", "nodejs_20"]
+nixPkgs = [
+  "python312",
+  "python312Packages.pip",
+  "python312Packages.setuptools",
+  "python312Packages.wheel",
+  "nodejs_20",
+]
 
 [phases.install]
 cmds = [
-  "python -m pip install --upgrade pip",
-  "python -m pip install -e '.'",
-  "npm ci --prefix web"
+  "pip install -e .",
+  "npm ci --prefix web",
 ]
 
 [phases.build]
