@@ -308,25 +308,29 @@ for link in result["broken_links"]:
 
 ## Deploy (Railway)
 
-One container. No Postgres plugin. No `DATABASE_URL`. No login.
+Nixpacks builds the UI (`web/`) and starts `python -m releasegraph.cli serve_api`. No Dockerfile. No Postgres. No login.
 
-```bash
-railway login
-railway init
-railway up
-```
+Public networking **Target port: `8080`** (Railway sets `PORT` for you — do not add `PORT` as a variable).
 
-| Variable | Default | Notes |
+### Variables to add in Railway → Variables
+
+Required: **none.** The app boots without any of these.
+
+Optional (paste these if you want explicit production defaults):
+
+| Name | Value | Required? |
 |---|---|---|
-| `PORT` | set by Railway | Do not override |
-| `CORS_ORIGINS` | `*` | Same-origin UI works without this |
-| `RG_AI_DISABLE` | `false` | Copilot on; demo answers if no Groq key |
-| `GROQ_API_KEY` | unset | Optional live Groq rephrasing |
-| `DATABASE_URL` | **ignored** | Do not add a database plugin |
+| `ENVIRONMENT` | `production` | No |
+| `DEBUG` | `false` | No |
+| `CORS_ORIGINS` | `*` | No |
+| `RG_AI_DISABLE` | `false` | No |
+| `GROQ_API_KEY` | your Groq key | No — Copilot uses demo answers if empty |
+| `GROQ_BASE_URL` | `https://api.groq.com/openai/v1` | No |
+| `GROQ_MODEL` | `openai/gpt-oss-20b` | No |
 
-Health: `/health` (`storage: memory`, `groq: true`). Docs: `/api/docs`.
+**Do not set:** `PORT`, `DATABASE_URL`, `JWT_SECRET`. Do not add a Postgres plugin.
 
-Artifacts: [`railway.json`](railway.json) · [`Dockerfile`](Dockerfile) · [`Procfile`](Procfile)
+Health: `/health`. Docs: `/api/docs`. Config: [`railway.json`](railway.json) · [`nixpacks.toml`](nixpacks.toml) · [`Procfile`](Procfile)
 
 ---
 
