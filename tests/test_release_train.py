@@ -25,6 +25,8 @@ def client():
 
 
 def _auth(client: TestClient) -> tuple[str, int]:
+    from pathlib import Path
+
     token = client.post(
         "/api/v1/auth/login", json={"email": "admin@acme.demo", "password": "admin123!"}
     ).json()["access_token"]
@@ -32,6 +34,13 @@ def _auth(client: TestClient) -> tuple[str, int]:
     pid = next(
         p["id"] for p in client.get("/api/v1/projects", headers=headers).json() if p["slug"] == "ecommerce"
     )
+    ws = str(Path(__file__).resolve().parent.parent / "demo" / "ecommerce")
+    scanned = client.post(
+        "/api/v1/workspaces/scan",
+        headers=headers,
+        json={"workspace": ws, "project_id": pid, "persist": True},
+    )
+    assert scanned.status_code == 200, scanned.text
     return token, pid
 
 

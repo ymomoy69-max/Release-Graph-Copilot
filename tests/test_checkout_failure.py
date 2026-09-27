@@ -1,6 +1,7 @@
 """Live checkout failure: the incident is the shop response, not a pretend ticket."""
 import json
 import os
+from pathlib import Path
 
 os.environ["DATABASE_URL"] = "sqlite:///./data/test_releasegraph.db"
 os.environ["JWT_SECRET"] = "test-secret"
@@ -31,6 +32,29 @@ def client():
     init_db()
     seed(reset=True)
     return TestClient(app)
+
+
+def _auth_headers(client: TestClient) -> dict[str, str]:
+    token = client.post(
+        "/api/v1/auth/login", json={"email": "admin@acme.demo", "password": "admin123!"}
+    ).json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _scan_ecommerce(client: TestClient, headers: dict[str, str]) -> int:
+    pid = next(
+        p["id"]
+        for p in client.get("/api/v1/projects", headers=headers).json()
+        if p["slug"] == "ecommerce"
+    )
+    ws = str(Path(__file__).resolve().parent.parent / "demo" / "ecommerce")
+    scanned = client.post(
+        "/api/v1/workspaces/scan",
+        headers=headers,
+        json={"workspace": ws, "project_id": pid, "persist": True},
+    )
+    assert scanned.status_code == 200, scanned.text
+    return pid
 
 
 def test_probe_records_failed_checkout():
@@ -104,11 +128,8 @@ def test_api_opens_incident_from_probe(client: TestClient, monkeypatch):
             ),
         ),
     )
-    token = client.post(
-        "/api/v1/auth/login", json={"email": "admin@acme.demo", "password": "admin123!"}
-    ).json()["access_token"]
-    headers = {"Authorization": f"Bearer {token}"}
-    pid = client.get("/api/v1/projects", headers=headers).json()[0]["id"]
+    headers = _auth_headers(client)
+    pid = _scan_ecommerce(client, headers)
     created = client.post(f"/api/v1/incidents/checkout-failure?project_id={pid}", headers=headers)
     assert created.status_code == 200, created.text
     body = created.json()
@@ -147,11 +168,8 @@ def test_api_list_incidents_closes_checkout_when_payments_restored(client: TestC
             ),
         ),
     )
-    token = client.post(
-        "/api/v1/auth/login", json={"email": "admin@acme.demo", "password": "admin123!"}
-    ).json()["access_token"]
-    headers = {"Authorization": f"Bearer {token}"}
-    pid = client.get("/api/v1/projects", headers=headers).json()[0]["id"]
+    headers = _auth_headers(client)
+    pid = _scan_ecommerce(client, headers)
     created = client.post(f"/api/v1/incidents/checkout-failure?project_id={pid}", headers=headers)
     assert created.status_code == 200
     inc_id = created.json()["incident_id"]
@@ -165,11 +183,8 @@ def test_api_does_not_invent_a_ticket_when_shop_is_down(client: TestClient, monk
         raise ShopUnavailable("Shop gateway is not reachable at http://shop.")
 
     monkeypatch.setattr("releasegraph.api.run_checkout_failure", down)
-    token = client.post(
-        "/api/v1/auth/login", json={"email": "admin@acme.demo", "password": "admin123!"}
-    ).json()["access_token"]
-    headers = {"Authorization": f"Bearer {token}"}
-    pid = client.get("/api/v1/projects", headers=headers).json()[0]["id"]
+    headers = _auth_headers(client)
+    pid = _scan_ecommerce(client, headers)
     before = client.get(f"/api/v1/incidents?project_id={pid}", headers=headers).json()
     failed = client.post(f"/api/v1/incidents/checkout-failure?project_id={pid}", headers=headers)
     assert failed.status_code == 424

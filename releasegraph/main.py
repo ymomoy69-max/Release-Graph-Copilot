@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -50,21 +51,18 @@ async def lifespan(app: FastAPI):
         _logger.info("init_db() completed (in-memory, no database)")
     except Exception as exc:  # noqa: BLE001
         _logger.exception("init_db() FAILED: %s", exc)
-    try:
-        seed(reset=False)
-        _logger.info("seed() completed (creates demo org/users on first boot)")
-    except Exception as exc:  # noqa: BLE001
-        _logger.exception("seed() FAILED (non-fatal; login may not work): %s", exc)
-    try:
-        ensure_demo_staff()
-        _logger.info("ensure_demo_staff() completed")
-    except Exception as exc:  # noqa: BLE001
-        _logger.exception("ensure_demo_staff() FAILED (non-fatal; login may not work): %s", exc)
-    try:
-        ensure_bootstrap_projects()
-        _logger.info("ensure_bootstrap_projects() completed")
-    except Exception as exc:  # noqa: BLE001
-        _logger.exception("ensure_bootstrap_projects() FAILED (non-fatal; demo projects missing): %s", exc)
+
+    def _seed_in_background() -> None:
+        try:
+            seed(reset=False)
+            ensure_demo_staff()
+            ensure_bootstrap_projects()
+            _logger.info("background seed completed")
+        except Exception:
+            _logger.exception("background seed failed")
+
+    # Bind PORT immediately so Railway /health can pass. Seed does not block listen.
+    threading.Thread(target=_seed_in_background, name="rgc-seed", daemon=True).start()
     yield
 
 
