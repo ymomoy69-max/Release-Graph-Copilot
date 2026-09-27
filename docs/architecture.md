@@ -3,24 +3,28 @@
 ## Layers
 
 | Layer | Location | Responsibility |
-|-------|----------|----------------|
-| Release safety engine | `rgc/` | Deterministic deploy checks (pipelines, flyway, FC/ETL, org YAML) |
-| Platform API | `releasegraph/` | REST API, auth, DB, risk engine, copilot tools, simulator |
-| Web UI | `web/` | React SPA — dashboard, releases, graph, incidents, copilot |
-| Demo microservices | `demo/ecommerce/`, `demo/streaming/` | E-commerce shop + OTT streaming stacks for graph and failure demos |
+|---|---|---|
+| IBM Bob core | `rgc/` | Analyze workspace, deploy graph, five checkers, citations, human gate |
+| Platform API | `releasegraph/` | Turns Bob’s outputs into releases, graph, readiness, incidents, Fix PRs, Copilot tools |
+| Web UI | `web/` | The eight-step developer workflow as pages |
+| Sample orgs | `demo/`, `fixtures/` | Ecommerce + streaming + org YAML for the hackathon loop |
 
-## Data flow
+## Agentic loop (Bob capabilities → product)
 
 ```
-Engineering events (seed / simulator) → PostgreSQL or SQLite
-       ↓
-FastAPI services (releases, graph, incidents, audit)
-       ↓
-React UI + Copilot (tool-backed answers)
+1 Analyze repo     Readiness scan / rgc check --workspace
+2 Dependencies     Release Graph (Kahn sort, closure, cycles)
+3 Risky changes    Checkers + risk engine
+4 Tests            tests/ (Bob-authored) + playwright_map
+5 Release review   Releases + deploy gate + Copilot tools
+6 Readiness        GO/NO-GO checklist + citations
+7 Fixes            Fix PRs (file/line/engine fix); human applies
+8 Re-check         Re-scan; tickets close only if finding is gone
+        └── back to 3 if anything remains
 ```
 
-The original **rgc** CLI and `python -m rgc serve` UI remain available for org workspace scans.
+No database server. Demo state is in-process memory. Verdicts stay in `rgc`; the UI never invents findings.
 
 ## IBM Bob
 
-The initial `rgc` checker suite and fixture scenarios were built per the IBM Bob 2.0 execution plan. The platform layer extends that with product APIs, demo data, and a SaaS-style UI while preserving the checker engine.
+The `rgc` suite was implemented with IBM Bob 2.0 (execution plan, org scan, generic org config, gate, CLI). ReleaseGraph Copilot is the product surface on that core. See the README section **Is the hackathon workflow depicted?**

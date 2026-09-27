@@ -82,40 +82,58 @@ export default function Dashboard({ project }: { project: { id: number; name: st
       </div>
 
       <div className="guide">
-        <h3>How this product is organized</h3>
+        <h3>IBM Bob workflow — what this app runs</h3>
+        <p className="muted" style={{ margin: "0 0 0.8rem" }}>
+          Bob built the engine. These eight steps are the same agentic loop on a sample org: scan, understand,
+          risk, tests, review, readiness, fix, re-check.
+        </p>
         <div className="steps">
           <div className="step">
-            <div className="n">1 · SCAN</div>
+            <div className="n">1 · ANALYZE</div>
             <p className="muted" style={{ margin: 0 }}>
-              Point Readiness at any workspace folder. Services, graph, incidents, and Fix PRs come from disk.
+              <Link to="/readiness">Readiness</Link> walks an unfamiliar workspace on disk.
             </p>
           </div>
           <div className="step">
             <div className="n">2 · GRAPH</div>
             <p className="muted" style={{ margin: 0 }}>
-              Who depends on whom. Red arrows are breaking links from the latest scan.
+              <Link to="/graph">Release Graph</Link> — who depends on whom, blast radius, broken links.
             </p>
           </div>
           <div className="step">
-            <div className="n">3 · INCIDENTS</div>
+            <div className="n">3 · RISK</div>
             <p className="muted" style={{ margin: 0 }}>
-              Scanner findings and live checkout failures — not canned stories.
+              Checkers + risk score. High findings block deploy.
             </p>
           </div>
           <div className="step">
-            <div className="n">4 · FIX PRs</div>
+            <div className="n">4 · TESTS</div>
             <p className="muted" style={{ margin: 0 }}>
-              Engine findings assigned for human review. Close only after the scanner is clean.
+              Playwright map vs deploy graph. Drift is a finding, not a guess.
             </p>
           </div>
           <div className="step">
-            <div className="n">5 · RELEASES</div>
+            <div className="n">5 · REVIEW</div>
             <p className="muted" style={{ margin: 0 }}>
-              {data.production_version
-                ? `Production: ${data.production_version}${data.draft_version ? ` · next: ${data.draft_version}` : ""}.`
-                : latest
-                  ? `Latest on record: ${latest.version} (${latest.status}).`
-                  : "Scan a workspace, then open Releases to start the train."}
+              <Link to="/releases">Releases</Link> and the deploy gate. Copilot only uses tools.
+            </p>
+          </div>
+          <div className="step">
+            <div className="n">6 · READY</div>
+            <p className="muted" style={{ margin: 0 }}>
+              GO/NO-GO checklist with citations. Human still holds the gate.
+            </p>
+          </div>
+          <div className="step">
+            <div className="n">7 · FIX</div>
+            <p className="muted" style={{ margin: 0 }}>
+              <Link to="/fix-prs">Fix PRs</Link> — file, line, engine fix. A person applies and approves.
+            </p>
+          </div>
+          <div className="step">
+            <div className="n">8 · RE-CHECK</div>
+            <p className="muted" style={{ margin: 0 }}>
+              Re-scan. Tickets close only if the finding is gone.
             </p>
           </div>
         </div>

@@ -82,6 +82,41 @@ Humans directed scope, reviewed diffs, and built the ReleaseGraph product surfac
 
 ---
 
+## Is the hackathon workflow depicted? Yes.
+
+Judges asked for: **developer workflow → real/sample project → multiple steps → agentic workflow → measurable reduction in effort/errors/time.**
+
+That is the product loop. IBM Bob built the **agent capabilities**. ReleaseGraph Copilot is the **experience** that runs those capabilities on a sample org (`demo/ecommerce`, `demo/streaming`, `fixtures/`) in eight steps. You do not re-prompt Bob for each release. You open the app (or `python -m rgc check`) and the same engine runs again.
+
+```mermaid
+flowchart LR
+  A["1 Analyze repo"] --> B["2 Dependency graph"]
+  B --> C["3 Risky changes"]
+  C --> D["4 Tests / e2e map"]
+  D --> E["5 Release review"]
+  E --> F["6 Readiness findings"]
+  F --> G["7 Fix tickets"]
+  G --> H["8 Re-check"]
+  H --> C
+```
+
+| # | Bob capability (engine) | What you click in the product | Measurable outcome |
+|---|---|---|---|
+| 1 | Analyze an unfamiliar repository | **Readiness** → scan workspace / `rgc check --workspace` | Services and files discovered without a human walking the tree |
+| 2 | Generate release / dependency understanding | **Release Graph** (`rgc/graph.py` + UI) | Nodes, edges, blast radius, cyclic-graph fail |
+| 3 | Identify risky changes | Risk scores, Flyway/FC-ETL/pipeline findings | High-severity issues counted on Home |
+| 4 | Create / update tests | Bob authored `tests/` + **playwright_map** checker | Missing or drifted e2e map is a blocker, not a guess |
+| 5 | Code / release review | **Releases**, deploy gate, Copilot (tools only) | Deploy blocked while critical findings remain |
+| 6 | Release-readiness findings | **Readiness** GO/NO-GO + `checklist.json` | Verdict + citations, not a chat paragraph |
+| 7 | Help implement fixes | **Fix PRs** (file, line, engine fix) + Copilot | Assigned tickets; human must approve |
+| 8 | Re-check after changes | **Re-scan workspace** on Fix PRs / Incidents | Ticket closes only if the finding is gone |
+
+**Effort / errors / time:** one scan replaces ad-hoc grepping of pipelines, SQL, and e2e folders. The gate cannot be skipped. Re-scan prevents “we think we fixed it.” Copilot cannot invent a path the checkers did not emit.
+
+Honest limit: the UI does not have Bob sit in the editor and write a patch for you. Step 7 is **engine-suggested fixes + human apply on disk + step 8**. That is the intended safety model.
+
+---
+
 ## IBM Bob Task Session Summary Screenshots
 
 Session captures from IBM Bob while it implemented the `rgc` core. Folder name is kept as specified: **`IBM Bob Task Session Summary Screenshots`**.

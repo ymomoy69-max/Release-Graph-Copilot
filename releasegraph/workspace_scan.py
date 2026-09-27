@@ -24,7 +24,7 @@ SKIP_DIRS = {
     ".tox",
     "dist",
     "build",
-    ".cursor",
+    ".idea",
     "egg-info",
     "coverage",
 }
