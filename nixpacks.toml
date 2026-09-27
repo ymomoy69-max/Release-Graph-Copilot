@@ -2,14 +2,15 @@ providers = ["python", "node"]
 
 [variables]
 NIXPACKS_PYTHON_VERSION = "3.12"
+NIXPACKS_NODE_VERSION = "20"
 
 [phases.setup]
+# Do not add nodejs_* here — the node provider already installs Node.
+# Two Node installs conflict on corepack (Railway build error).
 nixPkgs = [
-  "python312",
   "python312Packages.pip",
   "python312Packages.setuptools",
   "python312Packages.wheel",
-  "nodejs_20",
 ]
 
 [phases.install]
