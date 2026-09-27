@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "python -m releasegraph.cli serve_api",
+    "startCommand": "/opt/venv/bin/python -m releasegraph.cli serve_api",
     "healthcheckPath": "/health",
     "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",

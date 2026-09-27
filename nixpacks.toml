@@ -8,14 +8,14 @@ NIXPACKS_NODE_VERSION = "20"
 # Do not add nodejs_* here — the node provider already installs Node.
 # Two Node installs conflict on corepack (Railway build error).
 nixPkgs = [
-  "python312Packages.pip",
-  "python312Packages.setuptools",
-  "python312Packages.wheel",
+  "python312",
 ]
 
 [phases.install]
 cmds = [
-  "pip install -e .",
+  "python -m venv --copies /opt/venv",
+  "/opt/venv/bin/python -m pip install --upgrade pip setuptools wheel",
+  "/opt/venv/bin/python -m pip install -e .",
   "npm ci --prefix web",
 ]
 
@@ -23,4 +23,4 @@ cmds = [
 cmds = ["npm run build --prefix web"]
 
 [start]
-cmd = "python -m releasegraph.cli serve_api"
+cmd = "/opt/venv/bin/python -m releasegraph.cli serve_api"
