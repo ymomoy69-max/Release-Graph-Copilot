@@ -29,4 +29,4 @@ cmds = [
 ]
 
 [start]
-cmd = "/opt/venv/bin/python -m releasegraph.cli serve_api"
+cmd = "/opt/venv/bin/releasegraph-api"

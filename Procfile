@@ -1,1 +1,1 @@
-web: python -m releasegraph.cli serve_api
+web: releasegraph-api

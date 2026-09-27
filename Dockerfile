@@ -42,5 +42,8 @@ RUN pip install --upgrade pip \
 COPY --from=web-builder /app/web/dist/ ./web/dist/
 RUN test -f /app/web/dist/index.html
 
-EXPOSE 8000
-CMD ["python", "-m", "releasegraph.cli", "serve_api"]
+# Railway service Target port is 8080; $PORT is injected at runtime.
+ENV PORT=8080
+EXPOSE 8080
+# Console script from pyproject.toml → releasegraph.cli:serve_api
+CMD ["releasegraph-api"]
