@@ -1,61 +1,198 @@
 # ReleaseGraph Copilot
 
-AI-powered **release engineering** platform: dependency graphs, deterministic risk scoring, incident workflows, and a tool-backed Copilot — plus the original **rgc** deploy-safety engine (org YAML + five concurrent checkers).
+**Deploy-safety for engineering orgs — powered by an IBM Bob core.**
 
-## Product overview
+ReleaseGraph Copilot is a release-engineering platform. At its center is **`rgc`**, the deterministic deploy-safety engine **designed and built with IBM Bob**, IBM’s agentic coding system. Bob authored the models, graph algorithms, five concurrent checkers, citation engine, orchestrator, and human gate. The product UI and Copilot sit on that foundation. They do not replace it.
 
-| Component | Description |
-|-----------|-------------|
-| **Platform API** (`releasegraph/`) | FastAPI, SQLite/Postgres, JWT auth, releases, graph, incidents, audit, simulator |
-| **Web UI** (`web/`) | React SPA — dashboard, releases, Release Graph (React Flow), Copilot, incidents |
-| **Safety engine** (`rgc/`) | CLI + local UI — scan any org workspace via YAML config |
-| **Demo services** (`demo/ecommerce/`) | Simulated microservices (payment failure mode for demos) |
-
-Simulated CI/CD and demo services are **labeled**; they are not fake buttons — they write real rows to the database.
-
-## Quick start (platform demo)
-
-```bash
-python3 -m venv .venv
-.venv/bin/pip install -e ".[dev]"
-.venv/bin/python -m releasegraph.seed --reset   # demo users + e-commerce project
-.venv/bin/uvicorn releasegraph.main:app --reload --port 8000
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     ReleaseGraph Copilot                    │
+│  Dashboard · Release Graph · Readiness · Incidents · Chat   │
+└────────────────────────────┬────────────────────────────────┘
+                             │  tool-backed, evidence only
+┌────────────────────────────▼────────────────────────────────┐
+│              IBM Bob core  ·  rgc safety engine             │
+│  Org YAML · Catalog · Graph · 5 checkers · Citations · Gate │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-Frontend (dev):
+<p align="center">
+  <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-4178BE?style=flat-square">
+  <img alt="IBM Bob core" src="https://img.shields.io/badge/core-IBM%20Bob-0F62FE?style=flat-square">
+  <img alt="Deterministic checks" src="https://img.shields.io/badge/checks-deterministic-198038?style=flat-square">
+  <img alt="No database required" src="https://img.shields.io/badge/database-not%20required-8A3FFC?style=flat-square">
+  <img alt="Railway ready" src="https://img.shields.io/badge/deploy-Railway-000000?style=flat-square">
+</p>
+
+---
+
+## Watsonx Hackathon template
+
+This repo follows the [IBM Hackathon GitHub project template](https://github.com/watsonxhackathon/ibm-hackathon-template): security ignore files, env placeholders, and a commit checklist so credentials are not committed or pasted into Bob.
+
+| Template file | Role |
+|---|---|
+| [`.gitignore`](.gitignore) | Watsonx security patterns first; project paths below the marker |
+| [`.bobignore`](.bobignore) | Stops Bob from logging credential-shaped text |
+| [`.env.example`](.env.example) | Safe placeholders — copy to `.env`, never commit `.env` |
+| [`SECURITY.MD`](SECURITY.MD) | Credential rules and AI-assistant hygiene |
+| `bob_sessions/` | **Required for submission** — put exported Bob reports here (not live sessions) |
 
 ```bash
-cd web && npm install && npm run dev
-# http://localhost:5173 — login admin@acme.demo / admin123!
+cp .env.example .env
+# add keys locally only
+git check-ignore -v .env
 ```
 
-Or serve the built UI from the API:
+**Before every commit:** review `git diff`; no hardcoded keys; `.env` is not staged; no files named credential/secret/password; secrets only via environment variables. Details: [SECURITY.MD](SECURITY.MD).
+
+---
+
+## Problem & Solution Statement
+
+Modern engineering orgs do not fail releases because they lack dashboards. They fail because **deploy safety is fragmented, late, and easy to talk around**. Pipeline status lives in one system. SQL migrations live in another. Feature-config and ETL contracts live in YAML that nobody diffs against the deploy graph. Playwright maps drift from the services that actually ship. When something breaks in production, the postmortem is a narrative: someone thought CI was green, someone thought the migration was additive, someone thought checkout was covered by e2e.
+
+Large language models make that worse if they are allowed to *discover* risk. An assistant that invents a file path, a missing test, or a blast-radius victim is not a safety tool. It is a second source of fiction. Release managers need a **verdict they can defend in a change-advisory meeting**: go or no-go, with citations, with a human still holding the gate.
+
+**ReleaseGraph Copilot** solves that by splitting the problem in two.
+
+The **problem we refuse to give to a chatbot** is the verdict. The IBM Bob–built engine (`rgc`) reads an org the way a staff engineer would: `org.yaml`, a repo catalog, a deploy graph, CI status JSON, workspace overlays, and a release manifest. Five checkers run concurrently and in isolation—pipeline, workflow config, feature-config/ETL, Flyway SQL, Playwright map. Graph code uses Kahn topological sort and cycle detection so a cyclic deploy graph is a hard failure, not a pretty picture. Findings are frozen types (`Finding`, `CheckResult`, `Checklist`). Citations attach runbook sections. The human gate writes `checklist.json` and `gate.json` (`blocked` or `pending_approval`) and will not emit an e2e trigger until a person approves.
+
+The **problem we do give to a product layer** is comprehension. FastAPI and the React console turn the same engine output into a release graph, readiness scan, incidents, and a Copilot that may only rephrase **tool results**. No login and no database are required to try it: the demo boots in memory so evaluators can see the gate, not provision Postgres.
+
+The solution is therefore not “AI for DevOps.” It is **deterministic org-scale deploy checks, designed with IBM Bob, with a human gate that cannot be skipped, plus a UI that never invents a finding the checkers did not produce.** That is the only way a release system stays honest when the blast radius is an entire checkout or streaming path.
+
+*(Word count: 390)*
+
+---
+
+## IBM Bob Usage Statement
+
+IBM Bob was not used as a chat window for snippets. It was used as **the primary implementation agent for the deploy-safety core**, working from an IBM Bob 2.0 execution plan and a sequence of scoped tasks (org scan, generic org config, checker suite, gate, CLI).
+
+Bob built the `rgc` package layer by layer. It scaffolded packaging (`pyproject.toml`, Python 3.11+). It wrote frozen models (`Citation`, `Finding`, `CheckResult`, `E2EScope`, `Checklist`). It implemented the deploy graph (Kahn sort, DFS cycle detection, blast-radius closure) and a catalog loader sized for large fixture registries. It wrote manifest validation (invalid release JSON fails closed), an overlay-aware workspace reader, and five concurrent checkers: pipeline, workflow config, FC/ETL, Flyway, and Playwright map. It built citations (runbook search and blocker reports) and an orchestrator that fans checkers out on a thread pool with per-checker timeouts and exception isolation so one hung check cannot stall the release.
+
+Bob implemented the **human gate** (`rgc/gate.py`): `check`, `approve`, and `cancel`, including checklist/gate JSON and e2e-trigger lifecycle. It wrote the CLI (`check`, `approve`, `cancel`) and a local HTML server so an org can be scanned without the SaaS UI. It generated fixtures (release scenarios, deploy graphs, catalog, workspace files) and the test suite that covers unit, integration, scenario, and org-scan paths.
+
+When the plan evolved from company-specific checkers to a **generic org schema**, Bob redesigned `OrgConfig` (protected paths, max deploy repos, optional citations), replaced E2E-only scope with `DeployScope`, added generic checkers (`ci_status`, `db_migration`, `config_change`, `secret_scan`, `changeset_size`) where the plan required them, and renamed fixture workspaces to generic service names. Session logs show Bob running pytest after each layer, then repairing workflow-config overlay deduplication and Flyway comment stripping when tests failed—not by weakening assertions, but by fixing the engine.
+
+Humans directed scope, reviewed diffs, and built the ReleaseGraph product surface (`releasegraph/`, `web/`) **on top of** Bob’s engine. Copilot wording and Railway packaging are product concerns. **Go / no-go remains Bob’s code.** Evidence of those task sessions is stored, unchanged in folder name, under [`IBM Bob Task Session Summary Screenshots`](IBM%20Bob%20Task%20Session%20Summary%20Screenshots/).
+
+*(Word count: 335)*
+
+---
+
+## IBM Bob Task Session Summary Screenshots
+
+Session captures from IBM Bob while it implemented the `rgc` core. Folder name is kept as specified: **`IBM Bob Task Session Summary Screenshots`**.
+
+| Session | What Bob was doing |
+|---|---|
+| Build complete — `rgc` layers | Models, graph, catalog, manifest, workspace, checkers, citations, orchestrator, gate, CLI, server, fixtures, tests |
+| Checker repairs | Workflow-config overlay dedupe; Flyway `DELETE`/`WHERE` and comment stripping |
+| Execution-plan build | Step-by-step from `IBM_BOB_2.0_EXECUTION_PLAN.md` (package → models → graph) |
+| Org-config redesign | Generic schema; new checkers; file-level task status |
+| Org scan accomplished | Generic workspaces, `DeployScope`, CI/migration/secret/changeset checkers |
+| Gate + CLI | `gate.py` check / approve / cancel and release CLI wiring |
+
+<p align="center">
+  <img src="IBM%20Bob%20Task%20Session%20Summary%20Screenshots/01-bob-build-complete-rgc-layers.jpg" alt="IBM Bob: rgc layer build complete" width="720">
+</p>
+<p align="center">
+  <img src="IBM%20Bob%20Task%20Session%20Summary%20Screenshots/02-bob-checker-fixes-workflow-flyway.jpg" alt="IBM Bob: workflow and Flyway checker fixes" width="720">
+</p>
+<p align="center">
+  <img src="IBM%20Bob%20Task%20Session%20Summary%20Screenshots/03-bob-execution-plan-step-build.jpg" alt="IBM Bob: execution plan step-by-step build" width="720">
+</p>
+<p align="center">
+  <img src="IBM%20Bob%20Task%20Session%20Summary%20Screenshots/04-bob-org-config-redesign-file-list.jpg" alt="IBM Bob: generic OrgConfig redesign" width="720">
+</p>
+<p align="center">
+  <img src="IBM%20Bob%20Task%20Session%20Summary%20Screenshots/05-bob-org-scan-accomplished.jpg" alt="IBM Bob: org scan task accomplished" width="720">
+</p>
+<p align="center">
+  <img src="IBM%20Bob%20Task%20Session%20Summary%20Screenshots/06-bob-gate-py-and-cli.jpg" alt="IBM Bob: gate.py and CLI" width="720">
+</p>
+
+---
+
+## Why IBM Bob is the core
+
+Bob did not “help write a few files.” The **`rgc/` package is the product’s source of truth for go / no-go**. Every Readiness scan, deploy gate, and Copilot answer that talks about pipelines, migrations, or blast radius bottoms out in this engine.
+
+| Bob-built layer | Path | What it does |
+|---|---|---|
+| **Models** | `rgc/models.py` | Frozen types: `Finding`, `CheckResult`, `E2EScope`, `Checklist` |
+| **Graph** | `rgc/graph.py` | Kahn topological sort, DFS cycle detection, blast-radius closure |
+| **Catalog** | `rgc/catalog.py` | Repo registry (1,000+ fixture entries for scale tests) |
+| **Manifest** | `rgc/manifest.py` | Release JSON + six-level validation |
+| **Workspace** | `rgc/workspace.py` | Overlay-aware file view of the org |
+| **Checkers** | `rgc/checkers/` | Five concurrent, isolated safety checks |
+| **Citations** | `rgc/citations.py` | Runbook section search + blocker report |
+| **Orchestrator** | `rgc/orchestrator.py` | Thread-pool fan-out, per-checker timeout, exception isolation |
+| **Human gate** | `rgc/gate.py` | `check` · `approve` · `cancel` — no silent ship |
+| **CLI + local UI** | `rgc/cli.py`, `rgc/server.py` | Org scan from the terminal or a local HTML console |
+
+The React app and FastAPI platform (`releasegraph/`, `web/`) **consume** this engine. They add graphs, incidents, and a tool-backed Copilot. They never invent a finding the checkers did not produce.
+
+```mermaid
+flowchart TB
+  subgraph bob ["IBM Bob core — rgc"]
+    ORG["org.yaml + workspace"]
+    CAT["Catalog"]
+    G["Deploy graph"]
+    ORCH["Orchestrator"]
+    C1["pipeline"]
+    C2["workflow_config"]
+    C3["fc_etl"]
+    C4["flyway"]
+    C5["playwright_map"]
+    CIT["Citations"]
+    GATE["Human gate"]
+    ORG --> ORCH
+    CAT --> ORCH
+    G --> ORCH
+    ORCH --> C1 & C2 & C3 & C4 & C5
+    C1 & C2 & C3 & C4 & C5 --> CIT
+    CIT --> GATE
+  end
+  subgraph product ["Product surface"]
+    API["Platform API"]
+    UI["Release Graph UI"]
+    COP["Copilot"]
+  end
+  GATE --> API
+  API --> UI
+  API --> COP
+```
+
+---
+
+## The five checkers
+
+Checkers run **in parallel**, each isolated. A failure in one does not take down the others. Order is stable so reports are comparable across releases.
+
+| # | Checker | Blocks when |
+|---|---|---|
+| 1 | **pipeline** | Required CI is missing, red, or not mapped to the repo |
+| 2 | **workflow_config** | Overlay / workflow YAML is invalid or conflicts on the same path |
+| 3 | **fc_etl** | Feature-config / ETL contract breaks the deploy path |
+| 4 | **flyway** | Unsafe SQL (`DELETE`/`UPDATE` without `WHERE`, destructive DDL) |
+| 5 | **playwright_map** | E2E map and deploy graph disagree on what must be tested |
+
+Verdicts are **`go` / `no_go`**. `no_go` writes `gate.json` as `blocked`. Anything else waits for a human: `pending_approval` until `rgc approve`.
 
 ```bash
-cd web && npm run build
-# API on :8000 serves web/dist at /
+python -m rgc check --release fixtures/releases/safe.json --out out/safe
+python -m rgc approve --out out/safe
+python -m rgc cancel  --out out/safe
 ```
 
-Demo microservices (7 separate processes):
+---
 
-```bash
-./scripts/dev-all.sh
-# Platform UI :5173, API :8000, shop :8082, gateway :8080/health
-# Or separately: ./scripts/dev-platform.sh and python demo/ecommerce/run_all.py
-```
+## Org scan
 
-Docker: `docker compose -f docker-compose.demo.yml up --build`
-
-See [demo/ecommerce/README.md](demo/ecommerce/README.md).
-
-## Original rgc safety checks
-
-```bash
-.venv/bin/python -m rgc check --release fixtures/releases/safe.json --out out/safe
-.venv/bin/python -m rgc serve --host 127.0.0.1 --port 8765
-```
-
-Direct org scan:
+Point Bob’s engine at any org folder. No platform server required.
 
 ```bash
 python3 -m rgc check \
@@ -66,11 +203,57 @@ python3 -m rgc check \
   --out out/scan
 ```
 
-See [`fixtures/org.yaml`](fixtures/org.yaml) for org YAML fields.
+Org YAML, catalog, CI status JSON, and the deploy graph live under [`fixtures/`](fixtures/). See [`fixtures/org.yaml`](fixtures/org.yaml).
 
-## SDK (plug and play)
+Local console (HTML, no build step):
 
-Scan any folder of connected services. No API server, no login, no database:
+```bash
+python -m rgc serve --host 127.0.0.1 --port 8765
+```
+
+---
+
+## Product layer on top of Bob
+
+| Surface | Role |
+|---|---|
+| **Platform API** `releasegraph/` | FastAPI — releases, graph, readiness, incidents, audit, Copilot tools |
+| **Web UI** `web/` | React — dashboard, Release Graph (React Flow), Fix PRs, Copilot |
+| **SDK** `releasegraph.sdk` | Scan a microservices folder from Python; no login |
+| **Demo stacks** `demo/` | E-commerce + streaming services for blast-radius and failure demos |
+
+Copilot answers **only from engine tools**. Groq is optional wording. With no `GROQ_API_KEY`, Copilot still answers from checker and graph data.
+
+Demo mode needs **no login and no database**. Data is seeded in process memory on boot.
+
+---
+
+## Quick start
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -e ".[dev]"
+.venv/bin/python -m releasegraph.cli serve_api
+```
+
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000) (build the UI once with `cd web && npm install && npm run build`).
+
+Frontend hot-reload:
+
+```bash
+cd web && npm install && npm run dev
+# http://localhost:5173
+```
+
+Full demo shop + platform:
+
+```bash
+./scripts/dev-all.sh
+```
+
+---
+
+## SDK
 
 ```python
 from releasegraph.sdk import analyze_workspace
@@ -86,15 +269,31 @@ for link in result["broken_links"]:
 .venv/bin/releasegraph-scan /path/to/microservices --json
 ```
 
-Talk to a running ReleaseGraph API with `releasegraph.sdk.Client(base_url, token)`.
+---
 
-## Environment variables
+## Deploy (Railway)
 
-Copy [`.env.example`](.env.example). Key values:
+One container. No Postgres plugin. No `DATABASE_URL`. No login.
 
-- `DATABASE_URL` — default `sqlite:///./data/releasegraph.db`
-- `JWT_SECRET` — required in production
-- `CORS_ORIGINS` — frontend origin(s)
+```bash
+railway login
+railway init
+railway up
+```
+
+| Variable | Default | Notes |
+|---|---|---|
+| `PORT` | set by Railway | Do not override |
+| `CORS_ORIGINS` | `*` | Same-origin UI works without this |
+| `RG_AI_DISABLE` | `false` | Copilot on; demo answers if no Groq key |
+| `GROQ_API_KEY` | unset | Optional live Groq rephrasing |
+| `DATABASE_URL` | **ignored** | Do not add a database plugin |
+
+Health: `/health` (`storage: memory`, `groq: true`). Docs: `/api/docs`.
+
+Artifacts: [`railway.json`](railway.json) · [`Dockerfile`](Dockerfile) · [`Procfile`](Procfile)
+
+---
 
 ## Tests
 
@@ -102,134 +301,32 @@ Copy [`.env.example`](.env.example). Key values:
 .venv/bin/python -m pytest -q
 ```
 
-## Docker
+The Bob core is covered by unit, integration, scenario, and org-scan tests under [`tests/`](tests/) against [`fixtures/`](fixtures/).
 
-```bash
-docker compose up --build
-# API :8000, Postgres :5432, demo services :8081
-# Run seed inside API container after first start
+---
+
+## Repository map
+
+```
+rgc/                                              IBM Bob core — checkers, graph, gate, CLI
+releasegraph/                                     Platform API + Copilot tools (calls rgc)
+web/                                              React console
+demo/                                             Ecommerce + streaming sandboxes
+fixtures/                                         Org YAML, graphs, CI status, release manifests
+docs/                                             Architecture and demo scenarios
+IBM Bob Task Session Summary Screenshots/         Bob task-session photos (name kept)
 ```
 
-## Deploy to Railway
-
-ReleaseGraph Copilot ships with a complete Railway configuration. You can deploy the full stack (FastAPI + Postgres + built React UI) from a Git push with zero manual config beyond setting a required `JWT_SECRET`.
-
-### What's included
-
-- [`railway.json`](railway.json) — Railway service manifest: Nixpacks build plan (Python + Node), build commands, start command, `/health` healthcheck, restart policy, and all environment variable declarations with descriptions.
-- [`Procfile`](Procfile) — Nixpacks fallback: `web: python -m releasegraph.cli serve_api`.
-- [`Dockerfile`](Dockerfile) — Multi-stage production image (Node 20 builder for Vite, Python 3.12-slim runtime). Use this instead of Nixpacks by setting `builder: DOCKERFILE` in `railway.json` if you prefer explicit container builds.
-- [`.dockerignore`](.dockerignore) — Excludes `.venv`, caches, `node_modules`, local `data/`, `.env`, editor files.
-- Port binding: server honors Railway's dynamic `$PORT` env var (defaults to 8000 locally) and always binds to `0.0.0.0`.
-
-### Prerequisites
-
-1. A [Railway](https://railway.app/) account.
-2. Railway CLI (optional for CLI deploys, required for local build validation):
-   - macOS: `brew install railway`
-   - npm: `npm i -g @railway/cli`
-   - or see <https://docs.railway.app/guides/cli>
-
-### Deploy in 6 steps
-
-```bash
-# 1. Install CLI and log in
-railway login
-
-# 2. Initialize a new Railway project/service in your repo clone
-railway init
-#   → Create new project, name it e.g. "releasegraph", service name "api"
-
-# 3. (RECOMMENDED) Add the Postgres plugin for *persistent* storage.
-#    Without this, DATABASE_URL falls back to SQLite on the ephemeral disk
-#    and ALL data (users, releases, incidents, graph) is wiped on restart.
-railway add plugin postgresql
-
-# 4. Set the ONE required env var via the dashboard or CLI:
-#    Go to Railway → your service → Variables → New Variable.
-#    Generate a JWT secret with:
-python -c 'import secrets; print(secrets.token_urlsafe(64))'
-#    → Add a variable named JWT_SECRET and paste that value.
-#
-#    Optional CLI shortcut (less secure, ends up in shell history):
-# railway variables set JWT_SECRET "$(python -c 'import secrets; print(secrets.token_urlsafe(64))')"
-
-# 5. (Optional) Enable the AI Copilot. By default RG_AI_DISABLE=true so the
-#    app boots without LLM keys. To enable Copilot issue rephrasing:
-#    - Railway dashboard → Variables → RG_AI_DISABLE = false
-#    - Railway dashboard → Variables → GROQ_API_KEY = <your key>
-
-# 6. Deploy.
-#    Option A — connect your Git repo in the Railway dashboard (recommended
-#    for CD: every push to main redeploys).
-#    Option B — one-off CLI deploy:
-railway up
-```
-
-### After deploy
-
-1. Visit the generated Railway domain (shown in the dashboard or via `railway open`).
-2. First login uses seeded demo credentials:
-   - **Email**: `admin@acme.demo`
-   - **Password**: `admin123!`
-3. ⚠️ **Production warning**: After first login, immediately change the demo admin password from the API (`/api/docs` → `/api/users/me/password`) or disable the seeded users via a custom migration. Do not expose a Railway instance with these default credentials on the public internet unchanged.
-4. Confirm `/health` returns `{"status":"ok",...}`.
-5. Confirm `/ready` returns `{"status":"ready"}`.
-6. OpenAPI docs live at `/api/docs`.
-
-### Environment variables reference
-
-All variables are declared with descriptions in [`railway.json`](railway.json) and appear pre-filled in the Railway dashboard Variables tab.
-
-| Variable | Default (Railway) | Required | Notes |
-|---|---|---|---|
-| `ENVIRONMENT` | `production` | no | Tag only; triggers the weak-JWT warning when prod + default secret. |
-| `DEBUG` | `false` | no | Set to `true` for verbose logs. |
-| `PORT` | `8000` | auto | Railway overrides at runtime — **do not** edit this manually. |
-| `DATABASE_URL` | `sqlite:///./data/releasegraph.db` | auto* | *Auto-injected with a Postgres URL when you add the Postgres plugin. SQLite is ephemeral — do not rely on it in production. |
-| `JWT_SECRET` | *(none)* | **yes** | Generate via `python -c 'import secrets; print(secrets.token_urlsafe(64))'`. |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | `1440` | no | Session TTL; default = 24 hours. |
-| `CORS_ORIGINS` | `*` | no | Allow-list. `*` is convenient on Railway because the app domain is dynamic; lock it down to your custom domain for stricter browser security. |
-| `RG_AI_DISABLE` | `true` | no | Set to `false` + provide `GROQ_API_KEY` to enable Copilot features. |
-| `GROQ_API_KEY` | *(none)* | no | Groq / OpenRouter / OpenAI-compatible API key. |
-| `GROQ_BASE_URL` | `https://api.groq.com/openai/v1` | no | Override for OpenRouter (`https://openrouter.ai/api/v1`) or a local OpenAI-compatible gateway. |
-| `GROQ_MODEL` | `openai/gpt-oss-20b` | no | Model name passed to the LLM provider. |
-| `RELEASEGRAPH_WORKSPACE` | *(none)* | no | Optional path to a local workspace auto-scanned at first boot. |
-
-### Redeploy, logs, scaling
-
-- Redeploy after a new commit: Railway does this automatically when Git is connected, or run `railway up`, or click **Redeploy** in the dashboard.
-- View logs: Railway dashboard → your service → **Deployments** / **Metrics**, or `railway logs`.
-- Scale vertically (RAM/CPU): Railway dashboard → your service → **Settings** → **Service**.
-- Observability: All application logs are structured JSON-friendly lines written to stdout/stderr, including request IDs via `X-Request-Id`. Health metrics and uptime come from Railway's built-in `/health` polling.
-
-### Local Railway build validation
-
-Before pushing, simulate the Railway build + start flow locally:
-
-```bash
-# 1. Build the frontend (matches the Railway build phase)
-cd web && npm ci && npm run build && cd ..
-
-# 2. Install Python deps (if not already)
-python -m pip install -e ".[postgres]"
-
-# 3. Start on a random PORT simulating Railway's runtime
-PORT=9123 ENVIRONMENT=production JWT_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(24))')" python -m releasegraph.cli serve_api &
-
-# 4. Verify
-curl -s http://127.0.0.1:9123/health | jq .
-curl -s http://127.0.0.1:9123/ready  | jq .
-curl -s -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:9123/
-kill %1
-```
+---
 
 ## Documentation
 
 - [Architecture](docs/architecture.md)
 - [Demo scenarios](docs/demo-scenarios.md)
-- IBM Bob build spec: [IBM_BOB_2.0_EXECUTION_PLAN.md](IBM_BOB_2.0_EXECUTION_PLAN.md) (original checker product)
+- [E-commerce demo](demo/ecommerce/README.md)
 
-## IBM Bob
+---
 
-The **rgc** checker pipeline, fixtures, and org-scan design were implemented per the IBM Bob 2.0 hackathon plan. The **platform layer** adds SaaS APIs, seeded e-commerce engineering data, graph UI, risk engine, and evidence-based Copilot tools on top of that foundation.
+## Credit
+
+The **`rgc` safety engine** — types, deploy graph, catalog, manifest validation, workspace overlays, five concurrent checkers, citations, orchestrator, and human gate — was built with **IBM Bob 2.0**. ReleaseGraph Copilot is the product surface on that core.

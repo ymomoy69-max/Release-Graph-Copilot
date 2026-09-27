@@ -55,7 +55,13 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> "Settings":
-        origins = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
+        environment = os.getenv("ENVIRONMENT", "development")
+        default_origins = (
+            "*"
+            if environment == "production"
+            else "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000,http://127.0.0.1:8000"
+        )
+        origins = os.getenv("CORS_ORIGINS", default_origins)
         groq_key = os.getenv("GROQ_API_KEY") or os.getenv("RG_AI_API_KEY") or os.getenv("OPENAI_API_KEY") or ""
         groq_base = (
             os.getenv("GROQ_BASE_URL")
@@ -67,13 +73,17 @@ class Settings:
             groq_base = "https://api.groq.com/openai/v1"
         model = os.getenv("RG_AI_MODEL") or os.getenv("GROQ_MODEL") or os.getenv("OPENAI_MODEL") or "openai/gpt-oss-20b"
         return cls(
-            environment=os.getenv("ENVIRONMENT", "development"),
-            debug=os.getenv("DEBUG", "true").lower() in ("1", "true", "yes"),
+            environment=environment,
+            debug=os.getenv(
+                "DEBUG",
+                "false" if environment == "production" else "true",
+            ).lower()
+            in ("1", "true", "yes"),
             database_url=os.getenv(
                 "DATABASE_URL",
                 "sqlite:///./data/releasegraph.db",
             ),
-            jwt_secret=os.getenv("JWT_SECRET", "dev-change-me-in-production"),
+            jwt_secret=os.getenv("JWT_SECRET", "dev-unused-open-demo"),
             access_token_expire_minutes=int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", str(60 * 24))),
             cors_origins=tuple(o.strip() for o in origins.split(",") if o.strip()),
             demo_services_url=os.getenv("DEMO_SERVICES_URL", "http://localhost:8081"),

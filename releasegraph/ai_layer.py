@@ -21,19 +21,28 @@ SYSTEM = (
 
 
 def llm_enabled() -> bool:
-    if os.getenv("RG_AI_DISABLE", "").lower() in ("1", "true", "yes"):
-        return False
-    if "GROQ_API_KEY" in os.environ:
-        return bool(os.environ.get("GROQ_API_KEY", "").strip())
-    return bool(settings.groq_api_key)
+    """Groq/Copilot is on unless RG_AI_DISABLE is explicitly set."""
+    return os.getenv("RG_AI_DISABLE", "").lower() not in ("1", "true", "yes")
 
 
 def _api_key() -> str:
-    if os.getenv("RG_AI_DISABLE", "").lower() in ("1", "true", "yes"):
+    if not llm_enabled():
         return ""
     if "GROQ_API_KEY" in os.environ:
         return os.environ.get("GROQ_API_KEY", "").strip()
     return (settings.groq_api_key or "").strip()
+
+
+def _fake_groq_answer(question: str, tool_context: dict[str, Any]) -> str:
+    """Deterministic Copilot copy when no Groq key is configured."""
+    keys = ", ".join(sorted(tool_context.keys())) or "none"
+    q = (question or "").strip() or "this release"
+    return (
+        f"Copilot (demo mode): {q}\n\n"
+        f"I used the ReleaseGraph tools ({keys}) as the source of truth. "
+        "Findings come from the engine. A person must still approve any fix PR. "
+        "Set GROQ_API_KEY for live Groq rephrasing."
+    )
 
 
 def _chat(messages: list[dict[str, str]], *, json_mode: bool) -> str | None:
@@ -130,6 +139,8 @@ def enrich_issues(issues: list[dict[str, Any]], project_name: str | None = None)
 def complete_from_tools(question: str, tool_context: dict[str, Any]) -> str | None:
     if not llm_enabled():
         return None
+    if not _api_key():
+        return _fake_groq_answer(question, tool_context)
     messages = [
         {
             "role": "system",
@@ -143,4 +154,4 @@ def complete_from_tools(question: str, tool_context: dict[str, Any]) -> str | No
             "content": json.dumps({"question": question, "tool_context": tool_context}, default=str)[:20000],
         },
     ]
-    return _chat(messages, json_mode=False)
+    return _chat(messages, json_mode=False) or _fake_groq_answer(question, tool_context)

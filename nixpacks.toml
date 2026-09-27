@@ -1,0 +1,15 @@
+[phases.setup]
+nixPkgs = ["python312", "nodejs_20"]
+
+[phases.install]
+cmds = [
+  "python -m pip install --upgrade pip",
+  "python -m pip install -e '.'",
+  "npm ci --prefix web"
+]
+
+[phases.build]
+cmds = ["npm run build --prefix web"]
+
+[start]
+cmd = "python -m releasegraph.cli serve_api"

@@ -1,21 +1,10 @@
 const API = "/api/v1";
 
-export function getToken(): string | null {
-  return localStorage.getItem("rgc_token");
-}
-
-export function setToken(token: string | null) {
-  if (token) localStorage.setItem("rgc_token", token);
-  else localStorage.removeItem("rgc_token");
-}
-
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
   };
-  const token = getToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch(`${API}${path}`, { ...options, headers });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -89,11 +78,6 @@ export type ReleaseTrain = {
 };
 
 export const api = {
-  login: (email: string, password: string) =>
-    request<{ access_token: string }>("/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ email, password }),
-    }),
   me: () => request<{ email: string; full_name: string; role: string }>("/auth/me"),
   projects: () => request<Project[]>("/projects"),
   services: (projectId: number) =>

@@ -16,7 +16,7 @@ from releasegraph.api import router
 from releasegraph.config import settings
 from releasegraph.database import init_db
 from releasegraph.errors import http_exception_handler, validation_exception_handler
-from releasegraph.seed import ensure_bootstrap_projects, ensure_demo_staff
+from releasegraph.seed import ensure_bootstrap_projects, ensure_demo_staff, seed
 
 
 class RequestIdFilter(logging.Filter):
@@ -34,42 +34,27 @@ logging.getLogger().addFilter(RequestIdFilter())
 for _handler in logging.getLogger().handlers:
     _handler.addFilter(RequestIdFilter())
 
-_WEAK_JWT_DEFAULTS = {
-    "dev-change-me-in-production",
-    "change-me-use-long-random-string",
-    "",
-}
-
-if (
-    settings.environment == "production"
-    and settings.jwt_secret.strip() in _WEAK_JWT_DEFAULTS
-):
-    logging.getLogger(__name__).warning(
-        "SECURITY WARNING: JWT_SECRET is set to the weak dev default in ENVIRONMENT=production. "
-        "Set JWT_SECRET to a long random string via the Railway dashboard before exposing this instance. "
-        "Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(64))'"
-    )
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _logger = logging.getLogger(__name__)
-    from releasegraph import database as _db_mod
-
-    _scheme = _db_mod.NORM_DB_URL.split("://", 1)[0] if "://" in _db_mod.NORM_DB_URL else "unknown"
     _logger.info(
-        "Starting ReleaseGraph lifespan: ENVIRONMENT=%s DEBUG=%s PORT(from_env)=%s DATABASE_scheme=%s CORS_count=%d",
+        "Starting ReleaseGraph lifespan: ENVIRONMENT=%s DEBUG=%s PORT(from_env)=%s storage=memory CORS_count=%d",
         settings.environment,
         settings.debug,
         os.environ.get("PORT", "<unset>"),
-        _scheme,
         len(settings.cors_origins),
     )
     try:
         init_db()
-        _logger.info("init_db() completed")
+        _logger.info("init_db() completed (in-memory, no database)")
     except Exception as exc:  # noqa: BLE001
-        _logger.exception("init_db() FAILED: %s (check DATABASE_URL, Postgres plugin network, and psycopg2 install)", exc)
+        _logger.exception("init_db() FAILED: %s", exc)
+    try:
+        seed(reset=False)
+        _logger.info("seed() completed (creates demo org/users on first boot)")
+    except Exception as exc:  # noqa: BLE001
+        _logger.exception("seed() FAILED (non-fatal; login may not work): %s", exc)
     try:
         ensure_demo_staff()
         _logger.info("ensure_demo_staff() completed")
@@ -91,10 +76,13 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
 )
 
+_cors_origins = list(settings.cors_origins)
+_cors_wildcard = _cors_origins == ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=list(settings.cors_origins),
-    allow_credentials=True,
+    allow_origins=["*"] if _cors_wildcard else _cors_origins,
+    # Starlette rejects allow_origins=["*"] combined with credentials=True.
+    allow_credentials=not _cors_wildcard,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -122,7 +110,7 @@ app.include_router(router)
 def health():
     from releasegraph.ai_layer import llm_enabled
 
-    return {"status": "ok", "service": "releasegraph-api", "groq": llm_enabled()}
+    return {"status": "ok", "service": "releasegraph-api", "groq": llm_enabled(), "storage": "memory"}
 
 
 @app.get("/ready")

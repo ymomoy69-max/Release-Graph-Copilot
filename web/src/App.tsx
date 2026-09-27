@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Link, Route, Routes, useLocation } from "react-router-dom";
 import { api, type Project } from "./api";
-import { useAuth } from "./auth";
 import Dashboard from "./pages/Dashboard";
 import Releases from "./pages/Releases";
 import ReleaseDetail from "./pages/ReleaseDetail";
@@ -10,7 +9,6 @@ import CopilotPage from "./pages/CopilotPage";
 import IncidentsPage from "./pages/IncidentsPage";
 import AuditPage from "./pages/AuditPage";
 import ReadinessPage from "./pages/ReadinessPage";
-import Login from "./pages/Login";
 import { IconAlert, IconChat, IconDash, IconGraph, IconLog, IconPr, IconReleases, IconShield } from "./icons";
 import FixPRsPage from "./pages/FixPRs";
 
@@ -24,7 +22,6 @@ function Shell({
   onProject: (id: number) => void;
 }) {
   const loc = useLocation();
-  const { setAuthToken } = useAuth();
   const nav = [
     ["", "Home", "Project snapshot", <IconDash key="d" />],
     ["releases", "Releases", "Versions we shipped", <IconReleases key="r" />],
@@ -83,18 +80,6 @@ function Shell({
             );
           })}
         </nav>
-        <div className="sidebar-foot">
-          <button
-            className="secondary"
-            style={{ width: "100%" }}
-            onClick={() => {
-              setAuthToken(null);
-              window.location.href = "/login";
-            }}
-          >
-            Sign out
-          </button>
-        </div>
       </aside>
       <main className="main">
         <Routes>
@@ -113,8 +98,7 @@ function Shell({
   );
 }
 
-function AuthenticatedApp() {
-  const { token, setAuthToken } = useAuth();
+export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState<number | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -125,16 +109,12 @@ function AuthenticatedApp() {
   }
 
   useEffect(() => {
-    if (!token) {
-      setProjects([]);
-      setProjectId(null);
-      return;
-    }
     setLoadError("");
-    api.projects()
+    api
+      .projects()
       .then((ps) => {
         if (!ps.length) {
-          setLoadError("No projects yet. Sign in and scan a workspace on Readiness.");
+          setLoadError("No projects yet. Scan a workspace on Readiness.");
           return;
         }
         setProjects(ps);
@@ -145,16 +125,9 @@ function AuthenticatedApp() {
       .catch((err) => {
         setProjectId(null);
         const msg = err instanceof Error ? err.message : "Failed to load projects";
-        setLoadError(
-          `${msg}. Is the API running on port 8000? Use http://127.0.0.1:5173 (Vite) or http://127.0.0.1:8000 after npm run build.`,
-        );
-        setAuthToken(null);
+        setLoadError(`${msg}. Is the API running?`);
       });
-  }, [token, setAuthToken]);
-
-  if (!token) {
-    return <Navigate to="/login" replace />;
-  }
+  }, []);
 
   if (loadError) {
     return (
@@ -162,7 +135,6 @@ function AuthenticatedApp() {
         <div className="login-wrap">
           <h2>Could not load app</h2>
           <p className="error">{loadError}</p>
-          <button type="button" onClick={() => setAuthToken(null)}>Back to sign in</button>
         </div>
       </div>
     );
@@ -178,13 +150,4 @@ function AuthenticatedApp() {
   }
 
   return <Shell project={project} projects={projects} onProject={selectProject} />;
-}
-
-export default function App() {
-  return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route path="/*" element={<AuthenticatedApp />} />
-    </Routes>
-  );
 }
